@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, getToken, setToken } from './api.js';
+import { ApiError, api, setToken } from './api.js';
 
 import { AppContext } from './app-context.js';
 
@@ -19,11 +19,10 @@ export function AppProvider({ children }) {
     attendanceSummary: [],
     attendanceRecent: [],
   });
-  const [loading, setLoading] = useState(() => Boolean(getToken()));
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const refresh = useCallback(async () => {
-    if (!getToken()) return;
     const boot = await api.bootstrap();
     setData({
       classes: boot.classes || [],
@@ -43,14 +42,17 @@ export function AppProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) return;
     api.me()
       .then(({ user: u }) => {
         setUser(u);
         return refresh();
       })
-      .catch((e) => { setError(e.message || 'Your session expired. Please sign in again.'); setToken(null); })
+      .catch((e) => {
+        if (!(e instanceof ApiError) || e.status !== 401) {
+          setError(e.message || 'Your session expired. Please sign in again.');
+        }
+        setToken(null);
+      })
       .finally(() => setLoading(false));
   }, [refresh]);
 
@@ -73,6 +75,7 @@ export function AppProvider({ children }) {
   };
 
   const logout = () => {
+    api.logout?.();
     setToken(null);
     setUser(null);
     setData({

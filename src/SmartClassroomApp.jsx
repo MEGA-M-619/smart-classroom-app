@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useApp } from "./app-context.js";
-import { getToken } from "./api.js";
 import { ClassActionModals } from "./classModals.jsx";
 import { AttendancePage } from "./pages/AttendancePage.jsx";
 import { useToast } from "./components/Toast.jsx";
@@ -346,7 +345,7 @@ function Topbar({ title, user, notifCount, onToggleTheme }) {
 }
 
 // ─── Student Dashboard ────────────────────────────────────────────────────────
-function StudentDashboard({ user, setPage }) {
+function StudentDashboard({ user }) {
   const { classes, assignments, announcements, submissions, stats } = useApp();
   const studentClasses = classes;
   const pendingAssignments = assignments.filter(a => a.status === "active" && !a.submitted);
@@ -927,7 +926,7 @@ function AssignmentsPage({ user, setPage }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
               <label style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, display: "block" }}>Class</label>
-              <select className="sca-input" value={asgnForm.classId || teacherClasses[0]?.id || ""} onChange={e => setAsgnForm(f => ({ ...f, classId: Number(e.target.value) }))}>
+              <select className="sca-input" value={asgnForm.classId || teacherClasses[0]?.id || ""} onChange={e => setAsgnForm(f => ({ ...f, classId: e.target.value }))}>
                 {teacherClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
@@ -947,7 +946,7 @@ function AssignmentsPage({ user, setPage }) {
               <button className="sca-btn sca-btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowCreateAsgn(false)}>Cancel</button>
               <button className="sca-btn sca-btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => {
                 if (!asgnForm.title?.trim() || !asgnForm.dueDate) return alert("Title and due date are required");
-                await createAssignment({ ...asgnForm, classId: Number(asgnForm.classId || teacherClasses[0]?.id) });
+                await createAssignment({ ...asgnForm, classId: asgnForm.classId || teacherClasses[0]?.id });
                 setShowCreateAsgn(false);
                 setAsgnForm({ title: "", description: "", dueDate: "", points: 100, type: "Assignment", classId: teacherClasses[0]?.id || "" });
               }}>Create</button>
@@ -1086,7 +1085,7 @@ function CalendarPage({ user }) {
             {teacherClasses.length > 0 && (
               <div>
                 <label style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, display: "block" }}>Class (optional)</label>
-                <select className="sca-input" value={eventForm.classId} onChange={e => setEventForm(f => ({ ...f, classId: Number(e.target.value) }))}>
+                <select className="sca-input" value={eventForm.classId} onChange={e => setEventForm(f => ({ ...f, classId: e.target.value }))}>
                   <option value="">— None —</option>
                   {teacherClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -1180,7 +1179,7 @@ function AnnouncementsPage({ user }) {
             <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, display: "block" }}>Message</label><textarea className="sca-input" rows={4} placeholder="Write your announcement…" style={{ resize: "none" }} value={postForm.body} onChange={e => setPostForm(f => ({ ...f, body: e.target.value }))} /></div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="sca-btn sca-btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowPost(false)}>Cancel</button>
-              <button className="sca-btn sca-btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => { await createAnnouncement({ classId: Number(postForm.classId || classes[0]?.id), title: postForm.title, body: postForm.body, pinned: postForm.pinned }); setShowPost(false); setPostForm({ classId: "", title: "", body: "", pinned: false }); }}>Post</button>
+              <button className="sca-btn sca-btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => { await createAnnouncement({ classId: postForm.classId || classes[0]?.id, title: postForm.title, body: postForm.body, pinned: postForm.pinned }); setShowPost(false); setPostForm({ classId: "", title: "", body: "", pinned: false }); }}>Post</button>
             </div>
           </div>
         </Modal>
@@ -1572,7 +1571,7 @@ export default function App() {
   };
   const unreadNotifs = notifications.filter(n => !n.read).length;
 
-  if (loading && getToken() && !user) {
+  if (loading && !user) {
     return (
       <div className="sca-root sca-loading-screen">
         <div className="sca-spinner" />

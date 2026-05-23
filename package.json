@@ -5,23 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "dev:api": "node server/index.js",
-    "server": "node server/index.js",
-    "seed": "node server/seed.js",
     "build": "vite build",
     "build:check": "npm run lint && npm run build",
-    "start": "node server/index.js",
     "lint": "eslint .",
     "preview": "vite preview --host"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "bcryptjs": "^3.0.2",
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^1.4.5-lts.2"
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

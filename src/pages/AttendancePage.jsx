@@ -40,6 +40,7 @@ export function AttendancePage({ user }) {
   useEffect(() => {
     if (user.role !== 'teacher' && user.role !== 'admin') return undefined;
     if (!selectedClassId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     getClassAttendance(selectedClassId, sessionDate)
       .then((data) => {
@@ -48,6 +49,7 @@ export function AttendancePage({ user }) {
       })
       .catch((e) => toast.error(e.message || 'Could not load attendance.'))
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClassId, sessionDate, user.role]);
 
   const updateStatus = (studentId, status) => {
@@ -161,7 +163,7 @@ export function AttendancePage({ user }) {
         <div className="sca-grid-3">
           <div>
             <label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Class</label>
-            <select className="sca-input" value={selectedClassId} onChange={(e) => setSelectedClassId(Number(e.target.value))}>
+            <select className="sca-input" value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)}>
               {teacherClasses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
