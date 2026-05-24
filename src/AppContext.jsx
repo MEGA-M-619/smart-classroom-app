@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, api, setToken } from './api.js';
+import { supabase } from './lib/supabaseClient.js';
 
 import { AppContext } from './app-context.js';
 
@@ -14,6 +15,7 @@ export function AppProvider({ children }) {
     notifications: [],
     submissions: [],
     users: [],
+    classStudents: {},
     settings: {},
     stats: {},
     attendanceSummary: [],
@@ -33,6 +35,7 @@ export function AppProvider({ children }) {
       notifications: boot.notifications || [],
       submissions: boot.submissions || [],
       users: boot.users || [],
+      classStudents: boot.classStudents || {},
       settings: boot.settings || {},
       stats: boot.stats || {},
       attendanceSummary: boot.attendanceSummary || [],
@@ -55,6 +58,21 @@ export function AppProvider({ children }) {
       })
       .finally(() => setLoading(false));
   }, [refresh]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const channel = supabase
+      .channel(`smartclass-live-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'enrollments' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, refresh)
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refresh, user]);
 
   const login = async (email, password) => {
     setError(null);
@@ -80,7 +98,7 @@ export function AppProvider({ children }) {
     setUser(null);
     setData({
       classes: [], assignments: [], announcements: [], materials: [], events: [],
-      notifications: [], submissions: [], users: [], settings: {}, stats: {},
+      notifications: [], submissions: [], users: [], classStudents: {}, settings: {}, stats: {},
       attendanceSummary: [], attendanceRecent: [],
     });
   };
@@ -112,8 +130,8 @@ export function AppProvider({ children }) {
     createClass: (body) => run(() => api.createClass(body)),
     joinClass: (code) => run(() => api.joinClass(code)),
     createAssignment: (body) => run(() => api.createAssignment(body)),
-    submitAssignment: (assignmentId, file, fileName) =>
-      run(() => api.submitAssignment(assignmentId, file, fileName)),
+    submitAssignment: (assignmentId, file, fileName, textAnswer) =>
+      run(() => api.submitAssignment(assignmentId, file, fileName, textAnswer)),
     gradeSubmission: (id, grade, feedback) => run(() => api.gradeSubmission(id, grade, feedback)),
     downloadSubmission: (id, fileName) => api.downloadSubmission(id, fileName),
     createAnnouncement: (body) => run(() => api.createAnnouncement(body)),

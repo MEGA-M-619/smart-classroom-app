@@ -14,7 +14,9 @@ SmartClass is a Vite + React classroom management MVP backed by Supabase. The ap
 
 ```text
 src/
-  lib/supabase.js        Supabase client
+  lib/supabaseClient.js  Supabase client export
+  auth/useAuth.js        Auth hook
+  services/              Reusable Supabase service facade
   api.js                 Frontend data adapter using Supabase queries
   AppContext.jsx         App state and auth bootstrap
   SmartClassroomApp.jsx  Existing UI
@@ -45,12 +47,25 @@ VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 
 The migration includes the requested core tables:
 
-- `users (id, name, role, email)`
-- `classes (id, title, teacher_id)`
+- `users (id, full_name, role, created_at)`
+- `classes (id, name, description, teacher_id, join_code, created_at)`
+- `enrollments (id, class_id, student_id)`
 - `assignments (id, class_id, title, due_date)`
+- `submissions (id, assignment_id, student_id, file_url, text_answer, grade, feedback, submitted_at)`
 - `attendance (id, student_id, class_id, status)`
 
-It also adds supporting production tables for the existing UI: `class_enrollments`, `submissions`, `announcements`, `materials`, `events`, `notifications`, and `settings`.
+It also adds supporting production tables for the existing UI: `announcements`, `materials`, `events`, `notifications`, `settings`, plus RLS policies and private Storage buckets.
+
+## SaaS Flows
+
+- Students and teachers register with Supabase Auth.
+- The selected role is stored in `public.users`.
+- Teachers create classes and share the generated `join_code`.
+- Students join with a code and see only enrolled classes.
+- Teachers create assignments and see incoming submissions.
+- Students submit text answers and optional files.
+- Teachers grade submissions with scores and feedback.
+- Supabase Realtime refreshes class, enrollment, assignment, submission, and notification changes.
 
 ## Local Development
 
@@ -86,4 +101,4 @@ npm run lint      # eslint
 
 ## Notes
 
-Admin-created users from the frontend create app profiles only. Real production admin user provisioning should use a Supabase Edge Function with the service role key, because service-role secrets must never be exposed in a Vite frontend.
+For easiest email/password MVP testing, disable email confirmation in Supabase Auth or confirm test users from the dashboard. Service-role secrets must never be exposed in this Vite frontend.

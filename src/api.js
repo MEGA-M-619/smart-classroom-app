@@ -1,4 +1,4 @@
-import { supabase } from './lib/supabase.js';
+import { supabase } from './lib/supabaseClient.js';
 
 export class ApiError extends Error {
   constructor(message, { status = 0, details = null } = {}) {
@@ -9,45 +9,26 @@ export class ApiError extends Error {
   }
 }
 
-const colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6'];
+const classColors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6'];
 
 export function getToken() {
   return Object.keys(localStorage).some((key) => key.startsWith('sb-') && key.endsWith('-auth-token'));
 }
 
 export function setToken() {
-  // Supabase owns token persistence.
+  // Supabase Auth owns browser session persistence.
 }
 
 function fail(error, fallback = 'Supabase request failed.') {
   if (!error) return;
   throw new ApiError(error.message || fallback, {
-    status: error.status || error.code || 0,
-    details: error.details || null,
+    status: Number(error.status) || 0,
+    details: error.details || error.code || null,
   });
 }
 
-async function currentSession() {
-  const { data, error } = await supabase.auth.getSession();
-  fail(error, 'Could not read the current session.');
-  return data.session;
-}
-
-async function currentUser() {
-  const session = await currentSession();
-  if (!session?.user) throw new ApiError('Unauthorized', { status: 401 });
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', session.user.id)
-    .maybeSingle();
-  fail(error, 'Could not load your profile.');
-  if (!data) throw new ApiError('User profile not found.', { status: 404 });
-  return mapUser(data);
-}
-
 function initials(name = '') {
-  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+  return name.split(' ').map((word) => word[0]).join('').toUpperCase().slice(0, 2) || 'SC';
 }
 
 function timeAgo(iso) {
@@ -59,23 +40,31 @@ function timeAgo(iso) {
 }
 
 function formatSize(bytes = 0) {
+  if (!bytes) return 'No file';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function generateJoinCode(name = 'CLASS') {
+  const prefix = name.replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase() || 'CLSS';
+  return `${prefix}${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
 function mapUser(row) {
+  const name = row.full_name || row.name || row.email || 'SmartClass User';
   return {
     id: row.id,
-    name: row.name,
-    email: row.email,
+    name,
+    fullName: name,
+    email: row.email || '',
     role: row.role || 'student',
-    avatar: row.avatar || initials(row.name),
-    department: row.department,
-    major: row.major,
-    year: row.year,
-    phone: row.phone,
-    bio: row.bio,
+    avatar: initials(name),
+    department: row.department || '',
+    major: row.major || '',
+    year: row.year || '',
+    phone: row.phone || '',
+    bio: row.bio || '',
     darkMode: !!row.dark_mode,
     emailNotifications: row.email_notifications !== false,
     createdAt: row.created_at,
@@ -83,22 +72,23 @@ function mapUser(row) {
 }
 
 function mapClass(row, users = [], enrollments = []) {
-  const teacher = users.find((u) => u.id === row.teacher_id);
+  const teacher = users.find((user) => user.id === row.teacher_id);
   return {
     id: row.id,
-    name: row.title || row.name,
-    title: row.title || row.name,
-    code: row.code,
+    name: row.name || row.title,
+    title: row.name || row.title,
+    code: row.join_code || row.code,
+    joinCode: row.join_code || row.code,
     teacherId: row.teacher_id,
-    teacher: teacher?.name || 'Teacher',
-    color: row.color || colors[Math.abs(String(row.id).charCodeAt(0) || 0) % colors.length],
+    teacher: teacher?.full_name || teacher?.name || 'Teacher',
+    color: row.color || classColors[Math.abs(String(row.id).charCodeAt(0) || 0) % classColors.length],
     icon: row.icon || '📚',
-    students: enrollments.filter((e) => e.class_id === row.id).length,
-    semester: row.semester,
-    description: row.description,
-    schedule: row.schedule,
-    room: row.room,
+    students: enrollments.filter((enrollment) => enrollment.class_id === row.id).length,
+    description: row.description || '',
+    schedule: row.schedule || '',
+    room: row.room || '',
     maxStudents: row.max_students || 50,
+    createdAt: row.created_at,
   };
 }
 
@@ -109,40 +99,43 @@ function mapAssignment(row, submissions = []) {
     title: row.title,
     description: row.description || '',
     dueDate: row.due_date,
-    points: row.points || 100,
+    points: Number(row.points || 100),
     status: row.status || 'active',
-    submissions: submissions.filter((s) => s.assignment_id === row.id).length,
+    submissions: submissions.filter((submission) => submission.assignment_id === row.id).length,
     type: row.type || 'Assignment',
+    createdAt: row.created_at,
   };
 }
 
 function mapSubmission(row, users = []) {
-  const student = users.find((u) => u.id === row.student_id);
+  const student = users.find((user) => user.id === row.student_id);
   return {
     id: row.id,
     assignmentId: row.assignment_id,
     studentId: row.student_id,
-    studentName: student?.name || 'Student',
-    avatar: student?.avatar || initials(student?.name),
+    studentName: student?.full_name || student?.name || 'Student',
+    avatar: initials(student?.full_name || student?.name),
     submittedAt: row.submitted_at,
-    file: row.file_name,
+    file: row.file_name || (row.file_url ? 'Uploaded file' : ''),
     filePath: row.file_path,
+    fileUrl: row.file_url,
+    textAnswer: row.text_answer || '',
     grade: row.grade,
-    feedback: row.feedback,
-    status: row.status || 'submitted',
+    feedback: row.feedback || '',
+    status: row.status || (row.grade != null ? 'graded' : 'submitted'),
   };
 }
 
 function mapAnnouncement(row, users = [], classes = []) {
-  const author = users.find((u) => u.id === row.author_id);
-  const cls = classes.find((c) => c.id === row.class_id);
+  const author = users.find((user) => user.id === row.author_id);
+  const cls = classes.find((item) => item.id === row.class_id);
   return {
     id: row.id,
     classId: row.class_id,
     title: row.title,
     body: row.body,
-    teacher: author?.name || 'Teacher',
-    avatar: author?.avatar || initials(author?.name),
+    teacher: author?.full_name || author?.name || 'Teacher',
+    avatar: initials(author?.full_name || author?.name),
     date: row.created_at?.slice(0, 10),
     pinned: !!row.pinned,
     color: cls?.color || '#6366f1',
@@ -157,50 +150,108 @@ function mapMaterial(row) {
     type: row.type || 'pdf',
     size: formatSize(row.size_bytes || 0),
     date: row.uploaded_at?.slice(0, 10),
-    icon: row.icon || '📄',
+    icon: row.type === 'zip' ? '📦' : row.type === 'slides' ? '📊' : '📄',
     filePath: row.file_path,
     fileName: row.file_name,
   };
 }
 
-async function getTable(name, select = '*') {
-  const { data, error } = await supabase.from(name).select(select);
-  fail(error, `Could not load ${name}.`);
+async function getTable(table, select = '*') {
+  const { data, error } = await supabase.from(table).select(select);
+  fail(error, `Could not load ${table}.`);
   return data || [];
 }
 
-async function classIdsFor(user, classes, enrollments) {
-  if (user.role === 'admin') return classes.map((c) => c.id);
-  if (user.role === 'teacher') return classes.filter((c) => c.teacher_id === user.id).map((c) => c.id);
-  return enrollments.filter((e) => e.user_id === user.id).map((e) => e.class_id);
+async function currentSession() {
+  const { data, error } = await supabase.auth.getSession();
+  fail(error, 'Could not read the current session.');
+  return data.session;
 }
 
-async function notify(userId, text, icon = '🔔') {
+async function currentUser() {
+  const session = await currentSession();
+  if (!session?.user) throw new ApiError('Unauthorized', { status: 401 });
+
+  const { data, error } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
+  fail(error, 'Could not load your profile.');
+  if (!data) throw new ApiError('User profile not found. Create a profile or run supabase/schema.sql.', { status: 404 });
+  return mapUser(data);
+}
+
+function visibleClassIds(user, classRows, enrollmentRows) {
+  if (user.role === 'teacher') return classRows.filter((cls) => cls.teacher_id === user.id).map((cls) => cls.id);
+  return enrollmentRows.filter((enrollment) => enrollment.student_id === user.id).map((enrollment) => enrollment.class_id);
+}
+
+async function notify(userId, text, icon = 'bell') {
   if (!userId) return;
   await supabase.from('notifications').insert({ user_id: userId, text, icon });
 }
 
-function pointsToGpa(percent) {
-  if (percent >= 93) return 4;
-  if (percent >= 90) return 3.7;
-  if (percent >= 87) return 3.3;
-  if (percent >= 83) return 3;
-  if (percent >= 80) return 2.7;
-  if (percent >= 77) return 2.3;
-  if (percent >= 73) return 2;
-  if (percent >= 70) return 1.7;
-  if (percent >= 67) return 1.3;
-  if (percent >= 63) return 1;
-  if (percent >= 60) return 0.7;
-  return 0;
+function buildClassStudents(classes, users, enrollments) {
+  return Object.fromEntries(classes.map((cls) => [
+    cls.id,
+    enrollments
+      .filter((enrollment) => enrollment.class_id === cls.id)
+      .map((enrollment) => users.find((user) => user.id === enrollment.student_id))
+      .filter(Boolean)
+      .map(mapUser),
+  ]));
+}
+
+function buildAttendanceSummary(user, classes, attendanceRows) {
+  if (user.role === 'student') {
+    return classes.map((cls) => {
+      const rows = attendanceRows.filter((row) => row.student_id === user.id && row.class_id === cls.id);
+      const present = rows.filter((row) => row.status === 'present' || row.status === 'late').length;
+      return {
+        classId: cls.id,
+        className: cls.name,
+        code: cls.code,
+        color: cls.color,
+        icon: cls.icon,
+        totalSessions: rows.length,
+        presentCount: present,
+        absentCount: rows.filter((row) => row.status === 'absent').length,
+        lateCount: rows.filter((row) => row.status === 'late').length,
+        percentage: rows.length ? Math.round((present / rows.length) * 100) : null,
+      };
+    }).filter((row) => row.totalSessions);
+  }
+
+  return classes.map((cls) => {
+    const rows = attendanceRows.filter((row) => row.class_id === cls.id);
+    return {
+      classId: cls.id,
+      className: cls.name,
+      code: cls.code,
+      color: cls.color,
+      icon: cls.icon,
+      totalSessions: new Set(rows.map((row) => row.session_date)).size,
+      totalRecords: rows.length,
+      absentCount: rows.filter((row) => row.status === 'absent').length,
+    };
+  });
 }
 
 async function bootstrap() {
   const user = await currentUser();
-  const [allUsersRaw, allClassesRaw, enrollments, allAssignmentsRaw, allSubmissionsRaw, announcementsRaw, materialsRaw, eventsRaw, notificationsRaw, attendanceRaw, settingsRows] = await Promise.all([
+  const [
+    userRows,
+    classRows,
+    enrollmentRows,
+    assignmentRows,
+    submissionRows,
+    announcementRows,
+    materialRows,
+    eventRows,
+    notificationRows,
+    attendanceRows,
+    settingsRows,
+  ] = await Promise.all([
     getTable('users'),
     getTable('classes'),
-    getTable('class_enrollments'),
+    getTable('enrollments'),
     getTable('assignments'),
     getTable('submissions'),
     getTable('announcements'),
@@ -211,165 +262,127 @@ async function bootstrap() {
     getTable('settings'),
   ]);
 
-  const allUsers = allUsersRaw.map(mapUser);
-  const ids = await classIdsFor(user, allClassesRaw, enrollments);
-  const visibleClassRows = user.role === 'admin' ? allClassesRaw : allClassesRaw.filter((c) => ids.includes(c.id));
-  const classes = visibleClassRows.map((c) => mapClass(c, allUsers, enrollments));
-  const visibleAssignmentsRaw = allAssignmentsRaw.filter((a) => ids.includes(a.class_id) || user.role === 'admin');
-  let assignments = visibleAssignmentsRaw.map((a) => mapAssignment(a, allSubmissionsRaw));
-  const submissions = (user.role === 'teacher'
-    ? allSubmissionsRaw.filter((s) => visibleAssignmentsRaw.some((a) => a.id === s.assignment_id))
-    : user.role === 'student'
-      ? allSubmissionsRaw.filter((s) => s.student_id === user.id)
-      : allSubmissionsRaw
-  ).map((s) => mapSubmission(s, allUsers));
+  const ids = visibleClassIds(user, classRows, enrollmentRows);
+  const visibleClasses = classRows.filter((cls) => ids.includes(cls.id));
+  const visibleAssignments = assignmentRows.filter((assignment) => ids.includes(assignment.class_id));
+  const allUsers = userRows.map(mapUser);
+  const classes = visibleClasses.map((cls) => mapClass(cls, userRows, enrollmentRows));
+  const assignments = visibleAssignments.map((assignment) => mapAssignment(assignment, submissionRows));
 
-  if (user.role === 'student') {
-    const mine = new Map(submissions.map((s) => [s.assignmentId, s]));
-    assignments = assignments.map((a) => {
-      const submission = mine.get(a.id);
+  const submissions = (user.role === 'teacher'
+    ? submissionRows.filter((submission) => visibleAssignments.some((assignment) => assignment.id === submission.assignment_id))
+    : submissionRows.filter((submission) => submission.student_id === user.id)
+  ).map((submission) => mapSubmission(submission, userRows));
+
+  const submissionsByAssignment = new Map(submissions.map((submission) => [submission.assignmentId, submission]));
+  const assignmentsWithStudentState = user.role === 'student'
+    ? assignments.map((assignment) => {
+      const submission = submissionsByAssignment.get(assignment.id);
       return {
-        ...a,
+        ...assignment,
         submitted: !!submission,
         submissionStatus: submission?.status || null,
         submissionGrade: submission?.grade ?? null,
         submissionFeedback: submission?.feedback || '',
         submittedAt: submission?.submittedAt || null,
       };
-    });
-  }
+    })
+    : assignments;
 
-  const announcements = announcementsRaw
-    .filter((a) => ids.includes(a.class_id) || user.role === 'admin')
-    .map((a) => mapAnnouncement(a, allUsers, allClassesRaw));
-  const materials = materialsRaw.filter((m) => ids.includes(m.class_id) || user.role === 'admin').map(mapMaterial);
-  const events = eventsRaw
-    .filter((e) => !e.class_id || ids.includes(e.class_id) || user.role === 'admin')
-    .map((e) => ({ id: e.id, title: e.title, date: e.date, type: e.type, color: e.color }));
-  const notifications = notificationsRaw
-    .filter((n) => n.user_id === user.id)
+  const announcements = announcementRows
+    .filter((announcement) => ids.includes(announcement.class_id))
+    .map((announcement) => mapAnnouncement(announcement, userRows, classRows));
+  const materials = materialRows.filter((material) => ids.includes(material.class_id)).map(mapMaterial);
+  const events = eventRows
+    .filter((event) => !event.class_id || ids.includes(event.class_id))
+    .map((event) => ({
+      id: event.id,
+      title: event.title,
+      date: event.date,
+      type: event.type,
+      color: event.color,
+      classId: event.class_id,
+    }));
+  const notifications = notificationRows
+    .filter((notification) => notification.user_id === user.id)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
     .slice(0, 50)
-    .map((n) => ({ id: n.id, text: n.text, time: timeAgo(n.created_at), read: !!n.read, icon: n.icon }));
-  const users = user.role === 'admin' ? allUsers : [];
-  const settings = Object.fromEntries(settingsRows.map((s) => [s.key, s.value]));
+    .map((notification) => ({
+      id: notification.id,
+      text: notification.text,
+      time: timeAgo(notification.created_at),
+      read: !!notification.read,
+      icon: notification.icon,
+    }));
 
-  const attendanceSummary = buildAttendanceSummary(user, classes, attendanceRaw);
+  const graded = submissions.filter((submission) => submission.status === 'graded' && submission.grade != null);
+  const attendanceSummary = buildAttendanceSummary(user, classes, attendanceRows);
   const attendanceRecent = user.role === 'student'
-    ? attendanceRaw
-      .filter((r) => r.student_id === user.id)
+    ? attendanceRows
+      .filter((row) => row.student_id === user.id)
       .sort((a, b) => String(b.session_date).localeCompare(String(a.session_date)))
       .slice(0, 20)
-      .map((r) => ({
-        id: r.id,
-        status: r.status,
-        note: r.note || '',
-        date: r.session_date,
-        classId: r.class_id,
-        className: classes.find((c) => c.id === r.class_id)?.name || 'Class',
+      .map((row) => ({
+        id: row.id,
+        status: row.status,
+        note: row.note || '',
+        date: row.session_date,
+        classId: row.class_id,
+        className: classes.find((cls) => cls.id === row.class_id)?.name || 'Class',
       }))
     : [];
-  const graded = submissions.filter((s) => s.status === 'graded' && s.grade != null);
-  const gpa = graded.length
-    ? graded.reduce((sum, s) => {
-      const a = assignments.find((item) => item.id === s.assignmentId);
-      return sum + pointsToGpa((Number(s.grade) / Number(a?.points || 100)) * 100);
-    }, 0) / graded.length
-    : null;
 
   return {
     classes,
-    assignments,
+    assignments: assignmentsWithStudentState,
     announcements,
     materials,
     events,
     notifications,
     submissions,
-    users,
-    settings,
+    users: user.role === 'teacher' ? allUsers.filter((item) => item.role === 'student') : [],
+    classStudents: buildClassStudents(visibleClasses, userRows, enrollmentRows),
+    settings: Object.fromEntries(settingsRows.map((setting) => [setting.key, setting.value])),
     attendanceSummary,
     attendanceRecent,
     stats: {
       enrolledClasses: user.role === 'student' ? classes.length : undefined,
-      pendingTasks: user.role === 'student' ? assignments.filter((a) => a.status === 'active' && !a.submitted).length : undefined,
+      pendingTasks: user.role === 'student' ? assignmentsWithStudentState.filter((assignment) => assignment.status === 'active' && !assignment.submitted).length : undefined,
       submittedCount: user.role === 'student' ? submissions.length : undefined,
       gradedCount: user.role === 'student' ? graded.length : undefined,
-      gpa: gpa == null ? null : Number(gpa.toFixed(2)),
+      gpa: null,
       attendancePercentage: user.role === 'student' && attendanceSummary.length
         ? Math.round(attendanceSummary.reduce((sum, row) => sum + (row.percentage || 0), 0) / attendanceSummary.length)
         : undefined,
-      pendingGrades: user.role === 'teacher' ? submissions.filter((s) => s.status === 'submitted').length : undefined,
-      totalStudents: user.role === 'teacher' ? classes.reduce((sum, c) => sum + c.students, 0) : undefined,
+      pendingGrades: user.role === 'teacher' ? submissions.filter((submission) => submission.status === 'submitted').length : undefined,
+      totalStudents: user.role === 'teacher' ? classes.reduce((sum, cls) => sum + cls.students, 0) : undefined,
     },
   };
-}
-
-function buildAttendanceSummary(user, classes, attendanceRows) {
-  if (user.role === 'student') {
-    return classes.map((c) => {
-      const rows = attendanceRows.filter((r) => r.student_id === user.id && r.class_id === c.id);
-      const present = rows.filter((r) => r.status === 'present' || r.status === 'late').length;
-      return {
-        classId: c.id,
-        className: c.name,
-        code: c.code,
-        color: c.color,
-        icon: c.icon,
-        totalSessions: rows.length,
-        presentCount: present,
-        absentCount: rows.filter((r) => r.status === 'absent').length,
-        lateCount: rows.filter((r) => r.status === 'late').length,
-        percentage: rows.length ? Math.round((present / rows.length) * 100) : null,
-      };
-    }).filter((row) => row.totalSessions);
-  }
-  if (user.role === 'teacher') {
-    return classes.map((c) => {
-      const rows = attendanceRows.filter((r) => r.class_id === c.id);
-      return {
-        classId: c.id,
-        className: c.name,
-        code: c.code,
-        color: c.color,
-        icon: c.icon,
-        totalSessions: new Set(rows.map((r) => r.session_date)).size,
-        totalRecords: rows.length,
-        absentCount: rows.filter((r) => r.status === 'absent').length,
-      };
-    });
-  }
-  return [];
 }
 
 async function login(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   fail(error, 'Invalid email or password.');
-  const user = await currentUser();
-  return { token: data.session?.access_token, user };
+  return { token: data.session?.access_token, user: await currentUser() };
 }
 
 async function register(body) {
-  const email = String(body.email || '').toLowerCase().trim();
-  const name = String(body.name || '').trim();
-  const role = body.role || 'student';
+  const email = String(body.email || '').trim().toLowerCase();
+  const fullName = String(body.name || body.fullName || '').trim();
+  const role = body.role === 'teacher' ? 'teacher' : 'student';
   const { data, error } = await supabase.auth.signUp({
     email,
     password: body.password,
-    options: { data: { name, role } },
+    options: { data: { full_name: fullName, name: fullName, role } },
   });
   fail(error, 'Could not create your account.');
   if (!data.user) throw new ApiError('Could not create your account.', { status: 400 });
+
   const { error: profileError } = await supabase.from('users').upsert({
     id: data.user.id,
-    name,
+    full_name: fullName,
     email,
     role,
-    phone: body.phone || null,
-    department: body.department || null,
-    major: body.major || null,
-    year: body.year || null,
-    bio: body.bio || null,
-    avatar: initials(name),
   });
   fail(profileError, 'Could not create your profile.');
   return { token: data.session?.access_token, user: await currentUser() };
@@ -378,7 +391,7 @@ async function register(body) {
 async function updateProfile(body) {
   const user = await currentUser();
   const patch = {
-    name: body.name ?? user.name,
+    full_name: body.name ?? body.fullName ?? user.name,
     email: body.email ?? user.email,
     phone: body.phone ?? user.phone,
     bio: body.bio ?? user.bio,
@@ -387,10 +400,6 @@ async function updateProfile(body) {
   };
   const { data, error } = await supabase.from('users').update(patch).eq('id', user.id).select().single();
   fail(error, 'Could not update profile.');
-  if (body.email && body.email !== user.email) {
-    const { error: authError } = await supabase.auth.updateUser({ email: body.email });
-    fail(authError, 'Profile saved, but Supabase could not update the auth email.');
-  }
   return { user: mapUser(data) };
 }
 
@@ -402,34 +411,42 @@ async function updatePassword(_currentPassword, newPassword) {
 
 async function createClass(body) {
   const user = await currentUser();
-  const title = body.title || body.name;
-  const code = (body.code || title.replace(/[^a-z0-9]/gi, '').slice(0, 4) + Math.floor(100 + Math.random() * 900)).toUpperCase();
+  if (user.role !== 'teacher') throw new ApiError('Only teachers can create classes.', { status: 403 });
+  const name = String(body.name || body.title || '').trim();
+  const joinCode = generateJoinCode(name);
   const { data, error } = await supabase.from('classes').insert({
-    title,
-    teacher_id: user.id,
-    code,
+    name,
     description: body.description || '',
+    teacher_id: user.id,
+    join_code: joinCode,
     schedule: body.schedule || '',
     room: body.room || '',
-    color: colors[Math.floor(Math.random() * colors.length)],
+    color: classColors[Math.floor(Math.random() * classColors.length)],
   }).select().single();
   fail(error, 'Could not create class.');
-  return { class: mapClass(data, [user], []) };
+  return { class: mapClass(data, [{ id: user.id, full_name: user.name }], []) };
 }
 
 async function joinClass(code) {
   const user = await currentUser();
-  const { data: cls, error } = await supabase.from('classes').select('*').ilike('code', code.trim()).maybeSingle();
+  if (user.role !== 'student') throw new ApiError('Only students can join classes.', { status: 403 });
+  const { data: cls, error } = await supabase
+    .from('classes')
+    .select('*')
+    .ilike('join_code', String(code || '').trim())
+    .maybeSingle();
   fail(error, 'Could not find class.');
-  if (!cls) throw new ApiError('Class not found. Check the code.', { status: 404 });
-  const { error: joinError } = await supabase.from('class_enrollments').insert({ user_id: user.id, class_id: cls.id });
-  fail(joinError, 'Could not join class.');
-  await notify(cls.teacher_id, `${user.name} joined ${cls.title}`, '👤');
-  return { class: mapClass(cls, [], [{ user_id: user.id, class_id: cls.id }]) };
+  if (!cls) throw new ApiError('Class not found. Check the join code.', { status: 404 });
+
+  const { error: joinError } = await supabase.from('enrollments').insert({ class_id: cls.id, student_id: user.id });
+  fail(joinError, 'Could not join class. You may already be enrolled.');
+  await notify(cls.teacher_id, `${user.name} joined ${cls.name}`, 'user-plus');
+  return { class: mapClass(cls, [], [{ class_id: cls.id, student_id: user.id }]) };
 }
 
 async function createAssignment(body) {
   const user = await currentUser();
+  if (user.role !== 'teacher') throw new ApiError('Only teachers can create assignments.', { status: 403 });
   const { data, error } = await supabase.from('assignments').insert({
     class_id: body.classId,
     title: body.title,
@@ -437,41 +454,54 @@ async function createAssignment(body) {
     due_date: body.dueDate,
     points: body.points || 100,
     type: body.type || 'Assignment',
-    status: body.status || 'active',
+    status: 'active',
   }).select().single();
   fail(error, 'Could not create assignment.');
-  const { data: cls } = await supabase.from('classes').select('*').eq('id', body.classId).maybeSingle();
+
   await supabase.from('events').insert({
     title: body.title,
     date: body.dueDate,
     type: String(body.type || '').toLowerCase() === 'quiz' ? 'quiz' : 'assignment',
-    color: cls?.color || '#6366f1',
+    color: '#6366f1',
     class_id: body.classId,
     assignment_id: data.id,
   });
-  const { data: enrolled = [] } = await supabase.from('class_enrollments').select('user_id').eq('class_id', body.classId);
-  await Promise.all(enrolled.map((row) => notify(row.user_id, `New assignment: ${body.title}`, '📝')));
-  await notify(user.id, `Created assignment: ${body.title}`, '📝');
+
+  const { data: enrolled = [] } = await supabase.from('enrollments').select('student_id').eq('class_id', body.classId);
+  await Promise.all(enrolled.map((row) => notify(row.student_id, `New assignment: ${body.title}`, 'assignment')));
   return { assignment: mapAssignment(data, []) };
 }
 
-async function submitAssignment(assignmentId, file, fileName) {
+async function submitAssignment(assignmentId, file, fileName, textAnswer = '') {
   const user = await currentUser();
+  if (user.role !== 'student') throw new ApiError('Only students can submit assignments.', { status: 403 });
   let uploadedPath = null;
-  const finalName = file?.name || fileName || 'submission.txt';
+  let signedUrl = null;
+  const finalName = file?.name || fileName || '';
+
   if (file) {
-    uploadedPath = `${user.id}/${assignmentId}/${Date.now()}-${finalName}`;
+    uploadedPath = `${user.id}/${assignmentId}/${Date.now()}-${file.name}`;
     const { error } = await supabase.storage.from('submissions').upload(uploadedPath, file, { upsert: true });
     fail(error, 'Could not upload submission file.');
+    const signed = await supabase.storage.from('submissions').createSignedUrl(uploadedPath, 60 * 60 * 24 * 7);
+    signedUrl = signed.data?.signedUrl || null;
   }
+
+  if (!textAnswer?.trim() && !file) {
+    throw new ApiError('Add a text answer or upload a file before submitting.', { status: 400 });
+  }
+
   const { data, error } = await supabase.from('submissions').upsert({
     assignment_id: assignmentId,
     student_id: user.id,
-    file_name: finalName,
+    file_url: signedUrl,
     file_path: uploadedPath,
-    submitted_at: new Date().toISOString(),
-    status: 'submitted',
+    file_name: finalName,
+    text_answer: textAnswer || '',
     grade: null,
+    feedback: '',
+    status: 'submitted',
+    submitted_at: new Date().toISOString(),
   }, { onConflict: 'assignment_id,student_id' }).select().single();
   fail(error, 'Could not submit assignment.');
   return { submission: mapSubmission(data, [user]) };
@@ -485,7 +515,7 @@ async function gradeSubmission(id, grade, feedback) {
     .select()
     .single();
   fail(error, 'Could not grade submission.');
-  await notify(data.student_id, 'Your submission was graded.', '✅');
+  await notify(data.student_id, `Your submission was graded: ${grade}`, 'grade');
   return { submission: mapSubmission(data, []) };
 }
 
@@ -499,7 +529,7 @@ async function createAnnouncement(body) {
     pinned: !!body.pinned,
   }).select().single();
   fail(error, 'Could not post announcement.');
-  return { announcement: mapAnnouncement(data, [user], []) };
+  return { announcement: mapAnnouncement(data, [{ id: user.id, full_name: user.name }], []) };
 }
 
 async function uploadMaterial(classId, title, type, file) {
@@ -516,7 +546,6 @@ async function uploadMaterial(classId, title, type, file) {
     file_name: file?.name || title || 'Material',
     file_path: uploadedPath,
     size_bytes: file?.size || 0,
-    icon: type === 'zip' ? '📦' : type === 'slides' ? '📊' : '📄',
   }).select().single();
   fail(error, 'Could not save material.');
   return { material: mapMaterial(data) };
@@ -534,66 +563,28 @@ async function createEvent(body) {
   return { event: data };
 }
 
-async function createUser(body) {
-  const { data, error } = await supabase.from('users').insert({
-    id: crypto.randomUUID(),
-    name: body.name,
-    email: String(body.email || '').toLowerCase(),
-    role: body.role || 'student',
-    department: body.department || null,
-    major: body.major || null,
-    year: body.year || null,
-    phone: body.phone || null,
-    bio: body.bio || null,
-    avatar: initials(body.name),
-  }).select().single();
-  fail(error, 'Could not create user profile.');
-  return { user: mapUser(data) };
-}
-
-async function updateUser(id, body) {
-  const { data, error } = await supabase.from('users').update({
-    name: body.name,
-    email: body.email,
-    role: body.role,
-    department: body.department,
-    major: body.major,
-    year: body.year,
-    phone: body.phone,
-    bio: body.bio,
-  }).eq('id', id).select().single();
-  fail(error, 'Could not update user.');
-  return { user: mapUser(data) };
-}
-
-async function deleteUser(id) {
-  const { error } = await supabase.from('users').delete().eq('id', id);
-  fail(error, 'Could not delete user.');
-  return { ok: true };
-}
-
 async function getClassAttendance(classId, date) {
   const [users, enrollmentsResult, rowsResult] = await Promise.all([
     getTable('users'),
-    supabase.from('class_enrollments').select('*').eq('class_id', classId),
+    supabase.from('enrollments').select('*').eq('class_id', classId),
     supabase.from('attendance').select('*').eq('class_id', classId),
   ]);
   fail(enrollmentsResult.error, 'Could not load class roster.');
   fail(rowsResult.error, 'Could not load attendance.');
-  const roster = (enrollmentsResult.data || []).map((e) => users.find((u) => u.id === e.user_id)).filter(Boolean);
+  const roster = (enrollmentsResult.data || []).map((enrollment) => users.find((user) => user.id === enrollment.student_id)).filter(Boolean);
   const rows = rowsResult.data || [];
-  const byStudent = new Map(rows.filter((r) => r.session_date === date).map((r) => [r.student_id, r]));
+  const byStudent = new Map(rows.filter((row) => row.session_date === date).map((row) => [row.student_id, row]));
   const records = roster.map((student) => ({
     id: byStudent.get(student.id)?.id,
     studentId: student.id,
-    studentName: student.name,
-    avatar: student.avatar,
+    studentName: student.full_name || student.name,
+    avatar: initials(student.full_name || student.name),
     status: byStudent.get(student.id)?.status || 'present',
     note: byStudent.get(student.id)?.note || '',
   }));
-  const history = [...new Set(rows.map((r) => r.session_date))].sort().reverse().map((sessionDate) => {
-    const sessionRows = rows.filter((r) => r.session_date === sessionDate);
-    const presentCount = sessionRows.filter((r) => r.status === 'present' || r.status === 'late').length;
+  const history = [...new Set(rows.map((row) => row.session_date))].sort().reverse().map((sessionDate) => {
+    const sessionRows = rows.filter((row) => row.session_date === sessionDate);
+    const presentCount = sessionRows.filter((row) => row.status === 'present' || row.status === 'late').length;
     return {
       date: sessionDate,
       presentCount,
@@ -605,12 +596,12 @@ async function getClassAttendance(classId, date) {
 }
 
 async function saveClassAttendance(classId, date, records) {
-  const rows = records.map((r) => ({
+  const rows = records.map((record) => ({
     class_id: classId,
-    student_id: r.studentId,
+    student_id: record.studentId,
     session_date: date,
-    status: r.status || 'present',
-    note: r.note || '',
+    status: record.status || 'present',
+    note: record.note || '',
   }));
   const { error } = await supabase.from('attendance').upsert(rows, { onConflict: 'student_id,class_id,session_date' });
   fail(error, 'Could not save attendance.');
@@ -624,6 +615,21 @@ async function signedDownload(bucket, path) {
   window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
 }
 
+async function updateSettings(body) {
+  const rows = Object.entries(body).map(([key, value]) => ({ key, value: String(value) }));
+  const { error } = await supabase.from('settings').upsert(rows);
+  fail(error, 'Could not save settings.');
+  return { ok: true };
+}
+
+async function resetData() {
+  for (const table of ['attendance', 'submissions', 'materials', 'announcements', 'events', 'assignments', 'enrollments', 'classes']) {
+    const { error } = await supabase.from(table).delete().neq('created_at', '1900-01-01T00:00:00Z');
+    fail(error, `Could not reset ${table}.`);
+  }
+  return { ok: true };
+}
+
 export const api = {
   logout: () => supabase.auth.signOut(),
   login,
@@ -632,9 +638,21 @@ export const api = {
   bootstrap,
   updateProfile,
   updatePassword,
-  createUser,
-  updateUser,
-  deleteUser,
+  createUser: async (body) => register(body),
+  updateUser: async (id, body) => {
+    const { data, error } = await supabase.from('users').update({
+      full_name: body.name || body.fullName,
+      email: body.email,
+      role: body.role,
+    }).eq('id', id).select().single();
+    fail(error, 'Could not update user.');
+    return { user: mapUser(data) };
+  },
+  deleteUser: async (id) => {
+    const { error } = await supabase.from('users').delete().eq('id', id);
+    fail(error, 'Could not delete user.');
+    return { ok: true };
+  },
   createClass,
   joinClass,
   createAssignment,
@@ -665,30 +683,9 @@ export const api = {
     return { ok: true };
   },
   getReports: bootstrap,
-  getSettings: async () => Object.fromEntries((await getTable('settings')).map((s) => [s.key, s.value])),
-  updateSettings: async (body) => {
-    const rows = Object.entries(body).map(([key, value]) => ({ key, value: String(value) }));
-    const { error } = await supabase.from('settings').upsert(rows);
-    fail(error, 'Could not save settings.');
-    return { ok: true };
-  },
-  resetData: async () => {
-    const filters = {
-      attendance: ['class_id', '00000000-0000-0000-0000-000000000000'],
-      submissions: ['id', '00000000-0000-0000-0000-000000000000'],
-      materials: ['id', '00000000-0000-0000-0000-000000000000'],
-      announcements: ['id', '00000000-0000-0000-0000-000000000000'],
-      events: ['id', '00000000-0000-0000-0000-000000000000'],
-      assignments: ['id', '00000000-0000-0000-0000-000000000000'],
-      class_enrollments: ['class_id', '00000000-0000-0000-0000-000000000000'],
-      classes: ['id', '00000000-0000-0000-0000-000000000000'],
-    };
-    for (const [table, [column, value]] of Object.entries(filters)) {
-      const { error } = await supabase.from(table).delete().neq(column, value);
-      fail(error, `Could not reset ${table}.`);
-    }
-    return { ok: true };
-  },
+  getSettings: async () => Object.fromEntries((await getTable('settings')).map((setting) => [setting.key, setting.value])),
+  updateSettings,
+  resetData,
   getClassAttendance,
   saveClassAttendance,
 };

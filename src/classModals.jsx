@@ -7,7 +7,7 @@ export function ClassActionModals(props) {
   const {
     user, classes, selected,
     joinModal, setJoinModal, joinCode, setJoinCode, joinClass,
-    submitModal, setSubmitModal, submitFile, setSubmitFile, submitAssignment,
+    submitModal, setSubmitModal, submitFile, setSubmitFile, submitText, setSubmitText, submitAssignment,
     showCreateClass, setShowCreateClass, createClassForm, setCreateClassForm, createClass,
     showCreateAsgn, setShowCreateAsgn, asgnForm, setAsgnForm, createAssignment,
     showUpload, setShowUpload, uploadForm, setUploadForm, uploadMaterial,
@@ -33,12 +33,12 @@ export function ClassActionModals(props) {
       {submitModal && (
         <Modal title={`Submit — ${submitModal.title}`} onClose={() => setSubmitModal(null)}>
           <input type="file" className="sca-input" onChange={(e) => setSubmitFile(e.target.files?.[0] || null)} style={{ marginBottom: 12 }} />
-          <p style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>Or submit without a file (uses a placeholder filename).</p>
+          <textarea className="sca-input" rows={5} placeholder="Write your answer or notes for the teacher" value={submitText} onChange={(e) => setSubmitText(e.target.value)} style={{ resize: "vertical", marginBottom: 12 }} />
           <div style={{ display: "flex", gap: 10 }}>
             <button type="button" className="sca-btn sca-btn-ghost" style={{ flex: 1 }} onClick={() => setSubmitModal(null)}>Cancel</button>
             <button type="button" className="sca-btn sca-btn-primary" style={{ flex: 1 }} onClick={async () => {
-              await submitAssignment(submitModal.id, submitFile, submitFile?.name || `${submitModal.title.replace(/\s+/g, "_")}.zip`);
-              setSubmitModal(null); setSubmitFile(null);
+              await submitAssignment(submitModal.id, submitFile, submitFile?.name || "", submitText);
+              setSubmitModal(null); setSubmitFile(null); setSubmitText("");
             }}>Submit</button>
           </div>
         </Modal>
