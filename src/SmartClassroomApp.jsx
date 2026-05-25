@@ -104,7 +104,7 @@ function LandingPage({ onLogin }) {
         </p>
         <div style={{ display: "flex", gap: 12 }}>
           <button className="sca-btn sca-btn-primary" style={{ padding: "14px 28px", fontSize: 16 }} onClick={onLogin}>Start for Free</button>
-          <button className="sca-btn sca-btn-ghost" style={{ padding: "14px 28px", fontSize: 16 }} onClick={onLogin}>See Demo →</button>
+          <button className="sca-btn sca-btn-ghost" style={{ padding: "14px 28px", fontSize: 16 }} onClick={onLogin}>Sign In →</button>
         </div>
 
         {/* Features */}
@@ -149,10 +149,10 @@ function AuthPage({ onAuth }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const demoAccounts = [
-    { label: "👨‍🏫 Teacher Demo", email: "sarah@university.edu", password: "teacher123" },
-    { label: "👨‍🎓 Student Demo", email: "alex@student.edu", password: "student123" },
-    { label: "🔧 Admin Demo", email: "admin@system.edu", password: "admin123" },
+  const sampleAccounts = [
+    { label: "👨‍🏫 Teacher account", email: "sarah@university.edu", password: "teacher123" },
+    { label: "👨‍🎓 Student account", email: "alex@student.edu", password: "student123" },
+    { label: "🔧 Admin account", email: "admin@system.edu", password: "admin123" },
   ];
 
   const handleSubmit = async () => {
@@ -181,14 +181,16 @@ function AuthPage({ onAuth }) {
         <p style={{ fontSize: 16, opacity: .85, textAlign: "center", lineHeight: 1.7, maxWidth: 320 }}>
           A modern classroom management platform for students and educators.
         </p>
-        <div style={{ marginTop: 48, display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}>
-          {demoAccounts.map(d => (
-            <button key={d.email} className="sca-btn" style={{ background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", borderRadius: 10 }}
-              onClick={() => { setForm(f => ({ ...f, email: d.email, password: d.password })); setError(""); }}>
-              {d.label}
-            </button>
-          ))}
-        </div>
+        {import.meta.env.DEV && (
+          <div style={{ marginTop: 48, display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}>
+            {sampleAccounts.map(d => (
+              <button key={d.email} className="sca-btn" style={{ background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", borderRadius: 10 }}
+                onClick={() => { setForm(f => ({ ...f, email: d.email, password: d.password })); setError(""); }}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Right panel */}

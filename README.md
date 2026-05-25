@@ -1,38 +1,44 @@
 # SmartClass
 
-SmartClass is a Vite + React classroom management MVP backed by Supabase. The app runs as a static frontend on Vercel and uses Supabase Auth, Postgres, Row Level Security, and Storage for data.
+SmartClass is a React + Vite LMS SaaS MVP backed by Supabase Auth, PostgreSQL, Row Level Security, Realtime, and private Storage buckets. The app deploys as a static Vercel frontend and talks directly to Supabase through the anon client.
 
 ## Stack
 
 - React 19 + Vite
-- Supabase Auth for sign up, login, logout, sessions, and password updates
-- Supabase Postgres for users, classes, assignments, attendance, and app data
-- Supabase Storage buckets for materials and submissions
+- Supabase Auth for email/password signup, login, session persistence, and password updates
+- Supabase PostgreSQL for users, classrooms, enrollments, assignments, submissions, announcements, notifications, attendance, materials, events, and settings
+- Supabase Storage for private submission and material uploads
 - Vercel static deployment
 
-## Project Structure
+## Architecture
 
 ```text
 src/
-  lib/supabaseClient.js  Supabase client export
-  auth/useAuth.js        Auth hook
-  services/              Reusable Supabase service facade
-  api.js                 Frontend data adapter using Supabase queries
-  AppContext.jsx         App state and auth bootstrap
-  SmartClassroomApp.jsx  Existing UI
-  pages/AttendancePage.jsx
+  api.js                    Supabase data access and domain mapping
+  AppContext.jsx            Auth/session bootstrap, protected app state, realtime refresh
+  SmartClassroomApp.jsx     Existing SaaS UI and role dashboards
+  components/               Toasts, skeletons, error boundary
+  lib/                      Supabase client and env validation
+  pages/                    Feature pages such as attendance
 supabase/
-  schema.sql             Tables, RLS policies, and storage buckets
+  migrations/               Production SQL migrations
+  seed.sql                  Optional local/dev seed data
+  schema.sql                Pointer to canonical migrations
 ```
-
-The previous Express/SQLite server is no longer required for deployment. Vercel builds the Vite app and serves `dist/`.
 
 ## Supabase Setup
 
 1. Create a Supabase project.
-2. Open SQL Editor and run `supabase/schema.sql`.
-3. In Project Settings -> API, copy the Project URL and anon public key.
-4. Create `.env.local`:
+2. In Authentication -> Providers, enable Email.
+3. Apply the production migration in SQL Editor:
+
+```sql
+-- paste and run:
+-- supabase/migrations/202605260001_lms_saas_schema.sql
+```
+
+4. Confirm Storage has private buckets named `materials` and `submissions`. The migration creates them when SQL permissions allow it.
+5. Copy Project Settings -> API values into `.env.local`:
 
 ```bash
 VITE_APP_NAME=SmartClass
@@ -40,32 +46,32 @@ VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-5. In Authentication -> Providers, keep Email enabled. For easiest MVP testing, disable email confirmation or confirm users from the Supabase dashboard.
-6. In Storage, confirm the `materials` and `submissions` buckets exist. The schema creates them if storage SQL permissions allow it.
+Never expose a Supabase service-role key in Vite or Vercel frontend variables.
 
-## Required Tables
+## Database Model
 
-The migration includes the requested core tables:
+Core tables:
 
-- `users (id, full_name, role, created_at)`
-- `classes (id, name, description, teacher_id, join_code, created_at)`
-- `enrollments (id, class_id, student_id)`
-- `assignments (id, class_id, title, due_date)`
-- `submissions (id, assignment_id, student_id, file_url, text_answer, grade, feedback, submitted_at)`
-- `attendance (id, student_id, class_id, status)`
+- `users`: auth-linked profiles with `student`, `teacher`, and `admin` roles
+- `classrooms`: teacher-owned courses with join codes
+- `enrollments`: student membership in classrooms
+- `assignments`: due work attached to classrooms
+- `submissions`: student text/file submissions with grades and feedback
+- `announcements`: classroom posts
+- `notifications`: user-specific activity feed
 
-It also adds supporting production tables for the existing UI: `announcements`, `materials`, `events`, `notifications`, `settings`, plus RLS policies and private Storage buckets.
+Supporting tables:
 
-## SaaS Flows
+- `attendance`
+- `materials`
+- `events`
+- `settings`
 
-- Students and teachers register with Supabase Auth.
-- The selected role is stored in `public.users`.
-- Teachers create classes and share the generated `join_code`.
-- Students join with a code and see only enrolled classes.
-- Teachers create assignments and see incoming submissions.
-- Students submit text answers and optional files.
-- Teachers grade submissions with scores and feedback.
-- Supabase Realtime refreshes class, enrollment, assignment, submission, and notification changes.
+The migration includes foreign keys, uniqueness rules, indexes, updated-at triggers, private Storage policies, Realtime publication entries, and Row Level Security policies scoped by role and classroom membership.
+
+## Development Seed Data
+
+`supabase/seed.sql` contains optional sample LMS data. For a real Supabase project, create matching Auth users first, replace the UUIDs in `seed.sql` with those Auth user IDs, then run the seed file. This keeps development data real and Auth-backed instead of relying on frontend-only demo state.
 
 ## Local Development
 
@@ -76,7 +82,7 @@ npm run dev
 
 Open the Vite URL printed in the terminal, usually `http://localhost:5173`.
 
-## Deployment
+## Production Deployment
 
 Set these Vercel environment variables for Production, Preview, and Development:
 
@@ -86,19 +92,17 @@ Set these Vercel environment variables for Production, Preview, and Development:
 
 Vercel settings:
 
+- Framework: Vite
 - Build command: `npm run build`
 - Output directory: `dist`
-- No backend server or `/api` rewrite is required.
 
-## Scripts
+No Express server or `/api` rewrite is required.
+
+## Verification
 
 ```bash
-npm run dev       # local Vite dev server
-npm run build     # production build
-npm run preview   # preview the built app
-npm run lint      # eslint
+npm run lint
+npm run build
 ```
 
-## Notes
-
-For easiest email/password MVP testing, disable email confirmation in Supabase Auth or confirm test users from the dashboard. Service-role secrets must never be exposed in this Vite frontend.
+The app fails loudly with a startup error if required Supabase environment variables are missing, rather than silently connecting to a fake backend.

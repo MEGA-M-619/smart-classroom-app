@@ -1,14 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
+import { getEnv } from './env.js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const { VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY } = getEnv();
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  // Keep this visible during local/Vercel setup without crashing the static shell.
-  console.warn('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.');
-}
-
-export const supabase = createClient(supabaseUrl || 'https://example.supabase.co', supabaseAnonKey || 'missing-key', {
+export const supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,

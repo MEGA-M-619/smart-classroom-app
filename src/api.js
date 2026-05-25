@@ -1,5 +1,19 @@
 import { supabase } from './lib/supabaseClient.js';
 
+const TABLES = {
+  users: 'users',
+  classrooms: 'classrooms',
+  enrollments: 'enrollments',
+  assignments: 'assignments',
+  submissions: 'submissions',
+  announcements: 'announcements',
+  materials: 'materials',
+  events: 'events',
+  notifications: 'notifications',
+  attendance: 'attendance',
+  settings: 'settings',
+};
+
 export class ApiError extends Error {
   constructor(message, { status = 0, details = null } = {}) {
     super(message);
@@ -21,9 +35,12 @@ export function setToken() {
 
 function fail(error, fallback = 'Supabase request failed.') {
   if (!error) return;
-  throw new ApiError(error.message || fallback, {
+  const message = error.code === '23505'
+    ? 'This record already exists.'
+    : error.message || fallback;
+  throw new ApiError(message || fallback, {
     status: Number(error.status) || 0,
-    details: error.details || error.code || null,
+    details: error.details || error.code || message,
   });
 }
 
@@ -172,13 +189,14 @@ async function currentUser() {
   const session = await currentSession();
   if (!session?.user) throw new ApiError('Unauthorized', { status: 401 });
 
-  const { data, error } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
+  const { data, error } = await supabase.from(TABLES.users).select('*').eq('id', session.user.id).maybeSingle();
   fail(error, 'Could not load your profile.');
   if (!data) throw new ApiError('User profile not found. Create a profile or run supabase/schema.sql.', { status: 404 });
   return mapUser(data);
 }
 
 function visibleClassIds(user, classRows, enrollmentRows) {
+  if (user.role === 'admin') return classRows.map((cls) => cls.id);
   if (user.role === 'teacher') return classRows.filter((cls) => cls.teacher_id === user.id).map((cls) => cls.id);
   return enrollmentRows.filter((enrollment) => enrollment.student_id === user.id).map((enrollment) => enrollment.class_id);
 }
@@ -249,17 +267,17 @@ async function bootstrap() {
     attendanceRows,
     settingsRows,
   ] = await Promise.all([
-    getTable('users'),
-    getTable('classes'),
-    getTable('enrollments'),
-    getTable('assignments'),
-    getTable('submissions'),
-    getTable('announcements'),
-    getTable('materials'),
-    getTable('events'),
-    getTable('notifications'),
-    getTable('attendance'),
-    getTable('settings'),
+    getTable(TABLES.users),
+    getTable(TABLES.classrooms),
+    getTable(TABLES.enrollments),
+    getTable(TABLES.assignments),
+    getTable(TABLES.submissions),
+    getTable(TABLES.announcements),
+    getTable(TABLES.materials),
+    getTable(TABLES.events),
+    getTable(TABLES.notifications),
+    getTable(TABLES.attendance),
+    getTable(TABLES.settings),
   ]);
 
   const ids = visibleClassIds(user, classRows, enrollmentRows);
@@ -269,7 +287,7 @@ async function bootstrap() {
   const classes = visibleClasses.map((cls) => mapClass(cls, userRows, enrollmentRows));
   const assignments = visibleAssignments.map((assignment) => mapAssignment(assignment, submissionRows));
 
-  const submissions = (user.role === 'teacher'
+  const submissions = (['teacher', 'admin'].includes(user.role)
     ? submissionRows.filter((submission) => visibleAssignments.some((assignment) => assignment.id === submission.assignment_id))
     : submissionRows.filter((submission) => submission.student_id === user.id)
   ).map((submission) => mapSubmission(submission, userRows));
@@ -340,7 +358,11 @@ async function bootstrap() {
     events,
     notifications,
     submissions,
-    users: user.role === 'teacher' ? allUsers.filter((item) => item.role === 'student') : [],
+    users: user.role === 'admin'
+      ? allUsers
+      : user.role === 'teacher'
+        ? allUsers.filter((item) => item.role === 'student')
+        : [],
     classStudents: buildClassStudents(visibleClasses, userRows, enrollmentRows),
     settings: Object.fromEntries(settingsRows.map((setting) => [setting.key, setting.value])),
     attendanceSummary,
@@ -361,6 +383,7 @@ async function bootstrap() {
 }
 
 async function login(email, password) {
+  if (!email?.trim() || !password) throw new ApiError('Email and password are required.', { status: 400 });
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   fail(error, 'Invalid email or password.');
   return { token: data.session?.access_token, user: await currentUser() };
@@ -369,7 +392,10 @@ async function login(email, password) {
 async function register(body) {
   const email = String(body.email || '').trim().toLowerCase();
   const fullName = String(body.name || body.fullName || '').trim();
-  const role = body.role === 'teacher' ? 'teacher' : 'student';
+  const role = ['student', 'teacher'].includes(body.role) ? body.role : 'student';
+  if (!fullName) throw new ApiError('Full name is required.', { status: 400 });
+  if (!email) throw new ApiError('Email is required.', { status: 400 });
+  if (!body.password || body.password.length < 8) throw new ApiError('Password must be at least 8 characters.', { status: 400 });
   const { data, error } = await supabase.auth.signUp({
     email,
     password: body.password,
@@ -377,8 +403,11 @@ async function register(body) {
   });
   fail(error, 'Could not create your account.');
   if (!data.user) throw new ApiError('Could not create your account.', { status: 400 });
+  if (!data.session) {
+    throw new ApiError('Account created. Confirm your email before signing in.', { status: 202 });
+  }
 
-  const { error: profileError } = await supabase.from('users').upsert({
+  const { error: profileError } = await supabase.from(TABLES.users).upsert({
     id: data.user.id,
     full_name: fullName,
     email,
@@ -386,6 +415,46 @@ async function register(body) {
   });
   fail(profileError, 'Could not create your profile.');
   return { token: data.session?.access_token, user: await currentUser() };
+}
+
+async function createUser(body) {
+  const admin = await currentUser();
+  if (admin.role !== 'admin') throw new ApiError('Only admins can create users.', { status: 403 });
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const originalSession = sessionData.session;
+  const email = String(body.email || '').trim().toLowerCase();
+  const fullName = String(body.name || body.fullName || '').trim();
+  const requestedRole = ['student', 'teacher', 'admin'].includes(body.role) ? body.role : 'student';
+  if (!fullName || !email) throw new ApiError('Name and email are required.', { status: 400 });
+  if (!body.password || body.password.length < 8) throw new ApiError('Password must be at least 8 characters.', { status: 400 });
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password: body.password,
+    options: { data: { full_name: fullName, name: fullName, role: requestedRole === 'admin' ? 'student' : requestedRole } },
+  });
+  fail(error, 'Could not create user.');
+
+  if (originalSession?.access_token && originalSession?.refresh_token) {
+    const restored = await supabase.auth.setSession({
+      access_token: originalSession.access_token,
+      refresh_token: originalSession.refresh_token,
+    });
+    fail(restored.error, 'Could not restore admin session.');
+  }
+
+  if (!data.user) throw new ApiError('Could not create user.', { status: 400 });
+
+  const { data: profile, error: profileError } = await supabase.from(TABLES.users).upsert({
+    id: data.user.id,
+    full_name: fullName,
+    email,
+    role: requestedRole,
+  }).select().single();
+  fail(profileError, 'Could not create user profile.');
+
+  return { user: mapUser(profile) };
 }
 
 async function updateProfile(body) {
@@ -398,12 +467,13 @@ async function updateProfile(body) {
     dark_mode: body.darkMode ?? user.darkMode,
     email_notifications: body.emailNotifications ?? user.emailNotifications,
   };
-  const { data, error } = await supabase.from('users').update(patch).eq('id', user.id).select().single();
+  const { data, error } = await supabase.from(TABLES.users).update(patch).eq('id', user.id).select().single();
   fail(error, 'Could not update profile.');
   return { user: mapUser(data) };
 }
 
 async function updatePassword(_currentPassword, newPassword) {
+  if (!newPassword || newPassword.length < 8) throw new ApiError('New password must be at least 8 characters.', { status: 400 });
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   fail(error, 'Could not update password.');
   return { ok: true };
@@ -411,10 +481,11 @@ async function updatePassword(_currentPassword, newPassword) {
 
 async function createClass(body) {
   const user = await currentUser();
-  if (user.role !== 'teacher') throw new ApiError('Only teachers can create classes.', { status: 403 });
+  if (!['teacher', 'admin'].includes(user.role)) throw new ApiError('Only teachers can create classrooms.', { status: 403 });
   const name = String(body.name || body.title || '').trim();
+  if (!name) throw new ApiError('Classroom name is required.', { status: 400 });
   const joinCode = generateJoinCode(name);
-  const { data, error } = await supabase.from('classes').insert({
+  const { data, error } = await supabase.from(TABLES.classrooms).insert({
     name,
     description: body.description || '',
     teacher_id: user.id,
@@ -431,14 +502,14 @@ async function joinClass(code) {
   const user = await currentUser();
   if (user.role !== 'student') throw new ApiError('Only students can join classes.', { status: 403 });
   const { data: cls, error } = await supabase
-    .from('classes')
+    .from(TABLES.classrooms)
     .select('*')
     .ilike('join_code', String(code || '').trim())
     .maybeSingle();
   fail(error, 'Could not find class.');
   if (!cls) throw new ApiError('Class not found. Check the join code.', { status: 404 });
 
-  const { error: joinError } = await supabase.from('enrollments').insert({ class_id: cls.id, student_id: user.id });
+  const { error: joinError } = await supabase.from(TABLES.enrollments).insert({ class_id: cls.id, student_id: user.id });
   fail(joinError, 'Could not join class. You may already be enrolled.');
   await notify(cls.teacher_id, `${user.name} joined ${cls.name}`, 'user-plus');
   return { class: mapClass(cls, [], [{ class_id: cls.id, student_id: user.id }]) };
@@ -446,8 +517,11 @@ async function joinClass(code) {
 
 async function createAssignment(body) {
   const user = await currentUser();
-  if (user.role !== 'teacher') throw new ApiError('Only teachers can create assignments.', { status: 403 });
-  const { data, error } = await supabase.from('assignments').insert({
+  if (!['teacher', 'admin'].includes(user.role)) throw new ApiError('Only teachers can create assignments.', { status: 403 });
+  if (!body.classId) throw new ApiError('Choose a classroom before creating an assignment.', { status: 400 });
+  if (!body.title?.trim()) throw new ApiError('Assignment title is required.', { status: 400 });
+  if (!body.dueDate) throw new ApiError('Due date is required.', { status: 400 });
+  const { data, error } = await supabase.from(TABLES.assignments).insert({
     class_id: body.classId,
     title: body.title,
     description: body.description || '',
@@ -458,7 +532,7 @@ async function createAssignment(body) {
   }).select().single();
   fail(error, 'Could not create assignment.');
 
-  await supabase.from('events').insert({
+  await supabase.from(TABLES.events).insert({
     title: body.title,
     date: body.dueDate,
     type: String(body.type || '').toLowerCase() === 'quiz' ? 'quiz' : 'assignment',
@@ -467,7 +541,7 @@ async function createAssignment(body) {
     assignment_id: data.id,
   });
 
-  const { data: enrolled = [] } = await supabase.from('enrollments').select('student_id').eq('class_id', body.classId);
+  const { data: enrolled = [] } = await supabase.from(TABLES.enrollments).select('student_id').eq('class_id', body.classId);
   await Promise.all(enrolled.map((row) => notify(row.student_id, `New assignment: ${body.title}`, 'assignment')));
   return { assignment: mapAssignment(data, []) };
 }
@@ -491,7 +565,7 @@ async function submitAssignment(assignmentId, file, fileName, textAnswer = '') {
     throw new ApiError('Add a text answer or upload a file before submitting.', { status: 400 });
   }
 
-  const { data, error } = await supabase.from('submissions').upsert({
+  const { data, error } = await supabase.from(TABLES.submissions).upsert({
     assignment_id: assignmentId,
     student_id: user.id,
     file_url: signedUrl,
@@ -509,8 +583,8 @@ async function submitAssignment(assignmentId, file, fileName, textAnswer = '') {
 
 async function gradeSubmission(id, grade, feedback) {
   const { data, error } = await supabase
-    .from('submissions')
-    .update({ grade, feedback: feedback || '', status: 'graded' })
+    .from(TABLES.submissions)
+    .update({ grade, feedback: feedback || '', status: 'graded', graded_at: new Date().toISOString() })
     .eq('id', id)
     .select()
     .single();
@@ -521,7 +595,9 @@ async function gradeSubmission(id, grade, feedback) {
 
 async function createAnnouncement(body) {
   const user = await currentUser();
-  const { data, error } = await supabase.from('announcements').insert({
+  if (!body.classId) throw new ApiError('Choose a classroom before posting.', { status: 400 });
+  if (!body.title?.trim() || !body.body?.trim()) throw new ApiError('Announcement title and body are required.', { status: 400 });
+  const { data, error } = await supabase.from(TABLES.announcements).insert({
     class_id: body.classId,
     author_id: user.id,
     title: body.title,
@@ -533,13 +609,15 @@ async function createAnnouncement(body) {
 }
 
 async function uploadMaterial(classId, title, type, file) {
+  if (!classId) throw new ApiError('Choose a classroom before uploading material.', { status: 400 });
+  if (!title?.trim() && !file) throw new ApiError('Add a title or choose a file.', { status: 400 });
   let uploadedPath = null;
   if (file) {
     uploadedPath = `${classId}/${Date.now()}-${file.name}`;
     const { error } = await supabase.storage.from('materials').upload(uploadedPath, file, { upsert: true });
     fail(error, 'Could not upload material.');
   }
-  const { data, error } = await supabase.from('materials').insert({
+  const { data, error } = await supabase.from(TABLES.materials).insert({
     class_id: classId,
     title: title || file?.name || 'Material',
     type: type || 'pdf',
@@ -552,7 +630,8 @@ async function uploadMaterial(classId, title, type, file) {
 }
 
 async function createEvent(body) {
-  const { data, error } = await supabase.from('events').insert({
+  if (!body.title?.trim() || !body.date) throw new ApiError('Event title and date are required.', { status: 400 });
+  const { data, error } = await supabase.from(TABLES.events).insert({
     title: body.title,
     date: body.date,
     type: body.type || 'event',
@@ -565,9 +644,9 @@ async function createEvent(body) {
 
 async function getClassAttendance(classId, date) {
   const [users, enrollmentsResult, rowsResult] = await Promise.all([
-    getTable('users'),
-    supabase.from('enrollments').select('*').eq('class_id', classId),
-    supabase.from('attendance').select('*').eq('class_id', classId),
+    getTable(TABLES.users),
+    supabase.from(TABLES.enrollments).select('*').eq('class_id', classId),
+    supabase.from(TABLES.attendance).select('*').eq('class_id', classId),
   ]);
   fail(enrollmentsResult.error, 'Could not load class roster.');
   fail(rowsResult.error, 'Could not load attendance.');
@@ -603,7 +682,7 @@ async function saveClassAttendance(classId, date, records) {
     status: record.status || 'present',
     note: record.note || '',
   }));
-  const { error } = await supabase.from('attendance').upsert(rows, { onConflict: 'student_id,class_id,session_date' });
+  const { error } = await supabase.from(TABLES.attendance).upsert(rows, { onConflict: 'student_id,class_id,session_date' });
   fail(error, 'Could not save attendance.');
   return getClassAttendance(classId, date);
 }
@@ -617,13 +696,15 @@ async function signedDownload(bucket, path) {
 
 async function updateSettings(body) {
   const rows = Object.entries(body).map(([key, value]) => ({ key, value: String(value) }));
-  const { error } = await supabase.from('settings').upsert(rows);
+  const { error } = await supabase.from(TABLES.settings).upsert(rows);
   fail(error, 'Could not save settings.');
   return { ok: true };
 }
 
 async function resetData() {
-  for (const table of ['attendance', 'submissions', 'materials', 'announcements', 'events', 'assignments', 'enrollments', 'classes']) {
+  const user = await currentUser();
+  if (user.role !== 'admin') throw new ApiError('Only admins can reset workspace data.', { status: 403 });
+  for (const table of [TABLES.attendance, TABLES.submissions, TABLES.materials, TABLES.announcements, TABLES.events, TABLES.assignments, TABLES.enrollments, TABLES.classrooms]) {
     const { error } = await supabase.from(table).delete().neq('created_at', '1900-01-01T00:00:00Z');
     fail(error, `Could not reset ${table}.`);
   }
@@ -638,9 +719,11 @@ export const api = {
   bootstrap,
   updateProfile,
   updatePassword,
-  createUser: async (body) => register(body),
+  createUser,
   updateUser: async (id, body) => {
-    const { data, error } = await supabase.from('users').update({
+    const current = await currentUser();
+    if (current.role !== 'admin' && current.id !== id) throw new ApiError('Only admins can update other users.', { status: 403 });
+    const { data, error } = await supabase.from(TABLES.users).update({
       full_name: body.name || body.fullName,
       email: body.email,
       role: body.role,
@@ -649,7 +732,9 @@ export const api = {
     return { user: mapUser(data) };
   },
   deleteUser: async (id) => {
-    const { error } = await supabase.from('users').delete().eq('id', id);
+    const current = await currentUser();
+    if (current.role !== 'admin') throw new ApiError('Only admins can delete users.', { status: 403 });
+    const { error } = await supabase.from(TABLES.users).delete().eq('id', id);
     fail(error, 'Could not delete user.');
     return { ok: true };
   },
@@ -659,31 +744,31 @@ export const api = {
   submitAssignment,
   gradeSubmission,
   downloadSubmission: async (id) => {
-    const { data, error } = await supabase.from('submissions').select('file_path').eq('id', id).maybeSingle();
+    const { data, error } = await supabase.from(TABLES.submissions).select('file_path').eq('id', id).maybeSingle();
     fail(error, 'Could not find submission.');
     return signedDownload('submissions', data?.file_path);
   },
   createAnnouncement,
   uploadMaterial,
   downloadMaterial: async (id) => {
-    const { data, error } = await supabase.from('materials').select('file_path').eq('id', id).maybeSingle();
+    const { data, error } = await supabase.from(TABLES.materials).select('file_path').eq('id', id).maybeSingle();
     fail(error, 'Could not find material.');
     return signedDownload('materials', data?.file_path);
   },
   createEvent,
   markNotificationRead: async (id) => {
-    const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+    const { error } = await supabase.from(TABLES.notifications).update({ read: true }).eq('id', id);
     fail(error, 'Could not mark notification read.');
     return { ok: true };
   },
   markAllNotificationsRead: async () => {
     const user = await currentUser();
-    const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', user.id);
+    const { error } = await supabase.from(TABLES.notifications).update({ read: true }).eq('user_id', user.id);
     fail(error, 'Could not mark notifications read.');
     return { ok: true };
   },
   getReports: bootstrap,
-  getSettings: async () => Object.fromEntries((await getTable('settings')).map((setting) => [setting.key, setting.value])),
+  getSettings: async () => Object.fromEntries((await getTable(TABLES.settings)).map((setting) => [setting.key, setting.value])),
   updateSettings,
   resetData,
   getClassAttendance,
