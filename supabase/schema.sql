@@ -134,9 +134,10 @@ begin
   if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'users' and column_name = 'name') then
     execute 'update public.users set full_name = coalesce(full_name, name, email, ''SmartClass User'') where full_name is null';
   else
-    update public.users set full_name = coalesce(full_name, email, 'SmartClass User') where full_name is null;
+update public.users set full_name = coalesce(full_name, email, 'SmartClass User') where full_name is null;
   end if;
 end $$;
+update public.users set role = 'teacher' where role::text not in ('student', 'teacher');
 alter table public.users alter column full_name set not null;
 
 alter table public.classes add column if not exists name text;
@@ -189,7 +190,13 @@ alter table public.events enable row level security;
 alter table public.notifications enable row level security;
 alter table public.settings enable row level security;
 
-create or replace function public.current_role()
+drop policy if exists "teachers create classes" on public.classes;
+drop policy if exists "students join classes" on public.enrollments;
+drop policy if exists "teachers manage events" on public.events;
+
+drop function if exists public.current_role();
+
+create or replace function public.app_current_user_role()
 returns public.user_role
 language sql
 security definer
@@ -226,6 +233,37 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
 
+drop policy if exists "profiles are readable by signed-in users" on public.users;
+drop policy if exists "users can insert own profile" on public.users;
+drop policy if exists "users can update own profile" on public.users;
+drop policy if exists "classes are readable by signed-in users" on public.classes;
+drop policy if exists "teachers create classes" on public.classes;
+drop policy if exists "teachers manage own classes" on public.classes;
+drop policy if exists "teachers delete own classes" on public.classes;
+drop policy if exists "enrollments are readable by signed-in users" on public.enrollments;
+drop policy if exists "students join classes" on public.enrollments;
+drop policy if exists "students leave own classes" on public.enrollments;
+drop policy if exists "assignments are readable by signed-in users" on public.assignments;
+drop policy if exists "teachers create assignments for own classes" on public.assignments;
+drop policy if exists "teachers update assignments for own classes" on public.assignments;
+drop policy if exists "teachers delete assignments for own classes" on public.assignments;
+drop policy if exists "submissions are readable by owner, teacher, or classmates data views" on public.submissions;
+drop policy if exists "students submit own work" on public.submissions;
+drop policy if exists "students revise own ungraded work" on public.submissions;
+drop policy if exists "teachers grade submissions" on public.submissions;
+drop policy if exists "attendance readable by class participants" on public.attendance;
+drop policy if exists "teachers manage attendance" on public.attendance;
+drop policy if exists "announcements are readable by signed-in users" on public.announcements;
+drop policy if exists "teachers manage announcements" on public.announcements;
+drop policy if exists "materials are readable by signed-in users" on public.materials;
+drop policy if exists "teachers manage materials" on public.materials;
+drop policy if exists "events are readable by signed-in users" on public.events;
+drop policy if exists "teachers manage events" on public.events;
+drop policy if exists "users read own notifications" on public.notifications;
+drop policy if exists "signed-in users create notifications" on public.notifications;
+drop policy if exists "users update own notifications" on public.notifications;
+drop policy if exists "settings readable" on public.settings;
+
 create policy "profiles are readable by signed-in users"
 on public.users for select to authenticated using (true);
 
@@ -240,7 +278,7 @@ on public.classes for select to authenticated using (true);
 
 create policy "teachers create classes"
 on public.classes for insert to authenticated with check (
-  teacher_id = auth.uid() and public.current_role() = 'teacher'
+  teacher_id = auth.uid() and public.app_current_user_role() = 'teacher'
 );
 
 create policy "teachers manage own classes"
@@ -254,7 +292,7 @@ on public.enrollments for select to authenticated using (true);
 
 create policy "students join classes"
 on public.enrollments for insert to authenticated with check (
-  student_id = auth.uid() and public.current_role() = 'student'
+  student_id = auth.uid() and public.app_current_user_role() = 'student'
 );
 
 create policy "students leave own classes"
@@ -342,7 +380,7 @@ create policy "events are readable by signed-in users"
 on public.events for select to authenticated using (true);
 
 create policy "teachers manage events"
-on public.events for all to authenticated using (public.current_role() = 'teacher') with check (public.current_role() = 'teacher');
+on public.events for all to authenticated using (public.app_current_user_role() = 'teacher') with check (public.app_current_user_role() = 'teacher');
 
 create policy "users read own notifications"
 on public.notifications for select to authenticated using (user_id = auth.uid());
@@ -359,6 +397,10 @@ on public.settings for select to authenticated using (true);
 insert into storage.buckets (id, name, public)
 values ('submissions', 'submissions', false), ('materials', 'materials', false)
 on conflict (id) do nothing;
+
+drop policy if exists "signed-in users read smartclass files" on storage.objects;
+drop policy if exists "signed-in users upload smartclass files" on storage.objects;
+drop policy if exists "signed-in users update own smartclass files" on storage.objects;
 
 create policy "signed-in users read smartclass files"
 on storage.objects for select to authenticated using (bucket_id in ('submissions', 'materials'));
