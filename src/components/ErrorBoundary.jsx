@@ -17,7 +17,7 @@ export class ErrorBoundary extends Component {
           <div className="sca-card" style={{ maxWidth: 520 }}>
             <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>SmartClass could not start</h1>
             <p style={{ color: 'var(--sca-text-muted)', lineHeight: 1.6 }}>
-              {this.state.error.message || 'A startup error occurred. Check the Supabase configuration and reload.'}
+              {this.state.error.message || 'A startup error occurred. Check the API configuration and reload.'}
             </p>
           </div>
         </div>

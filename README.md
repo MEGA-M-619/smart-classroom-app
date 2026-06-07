@@ -1,108 +1,156 @@
 # SmartClass
 
-SmartClass is a React + Vite LMS SaaS MVP backed by Supabase Auth, PostgreSQL, Row Level Security, Realtime, and private Storage buckets. The app deploys as a static Vercel frontend and talks directly to Supabase through the anon client.
+SmartClass is a React + Vite LMS frontend backed by a Java 21 Spring Boot REST API and MySQL 8. The UI keeps the existing SaaS classroom design while all authentication and data access now flow through the backend API.
 
 ## Stack
 
-- React 19 + Vite
-- Supabase Auth for email/password signup, login, session persistence, and password updates
-- Supabase PostgreSQL for users, classrooms, enrollments, assignments, submissions, announcements, notifications, attendance, materials, events, and settings
-- Supabase Storage for private submission and material uploads
-- Vercel static deployment
+- Frontend: React 19, Vite, Axios
+- Backend: Java 21, Spring Boot 3, Maven
+- API: Spring Web REST controllers
+- Persistence: Spring Data JPA, MySQL Connector/J
+- Security: Spring Security, JWT, BCrypt password hashing
+- Database: MySQL 8
 
-## Architecture
+## Project Structure
 
 ```text
+backend/
+  src/main/java/com/smartclassroom/
+    config/       Security, CORS, static upload config
+    controller/   REST endpoints
+    dto/          Request/response DTOs with validation
+    entity/       JPA entities
+    exception/    Global exception handling
+    repository/   Spring Data repositories
+    security/     JWT and current-user helpers
+    service/      Business logic
+database/
+  schema.sql      MySQL schema for local setup
 src/
-  api.js                    Supabase data access and domain mapping
-  AppContext.jsx            Auth/session bootstrap, protected app state, realtime refresh
-  SmartClassroomApp.jsx     Existing SaaS UI and role dashboards
-  components/               Toasts, skeletons, error boundary
-  lib/                      Supabase client and env validation
-  pages/                    Feature pages such as attendance
-supabase/
-  migrations/               Production SQL migrations
-  seed.sql                  Optional local/dev seed data
-  schema.sql                Pointer to canonical migrations
+  api.js          Axios API client and JWT persistence
+  AppContext.jsx  Protected app state wired to REST API
+  SmartClassroomApp.jsx
 ```
 
-## Supabase Setup
+## Environment Variables
 
-1. Create a Supabase project.
-2. In Authentication -> Providers, enable Email.
-3. Apply the production migration in SQL Editor:
-
-```sql
--- paste and run:
--- supabase/migrations/202605260001_lms_saas_schema.sql
-```
-
-4. Confirm Storage has private buckets named `materials` and `submissions`. The migration creates them when SQL permissions allow it.
-5. Copy Project Settings -> API values into `.env.local`:
+Frontend `.env` or `.env.local`:
 
 ```bash
 VITE_APP_NAME=SmartClass
-VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_API_BASE_URL=http://localhost:8080/api
+VITE_ANALYTICS_ID=
 ```
 
-Never expose a Supabase service-role key in Vite or Vercel frontend variables.
+Backend `backend/src/main/resources/application.properties` defaults:
 
-## Database Model
+```properties
+spring.datasource.url=jdbc:mysql://localhost:3306/smart_classroom
+spring.datasource.username=root
+spring.datasource.password=password
+spring.jpa.hibernate.ddl-auto=update
+app.jwt.secret=change-this-development-secret-change-this-development-secret
+```
 
-Core tables:
+For production, override `JWT_SECRET`, `JWT_EXPIRATION_MS`, `CORS_ALLOWED_ORIGINS`, and database credentials through environment variables or your deployment platform.
 
-- `users`: auth-linked profiles with `student`, `teacher`, and `admin` roles
-- `classrooms`: teacher-owned courses with join codes
-- `enrollments`: student membership in classrooms
-- `assignments`: due work attached to classrooms
-- `submissions`: student text/file submissions with grades and feedback
-- `announcements`: classroom posts
-- `notifications`: user-specific activity feed
+## REST API
 
-Supporting tables:
+Auth:
 
-- `attendance`
-- `materials`
-- `events`
-- `settings`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
 
-The migration includes foreign keys, uniqueness rules, indexes, updated-at triggers, private Storage policies, Realtime publication entries, and Row Level Security policies scoped by role and classroom membership.
+Users:
 
-## Development Seed Data
+- `GET /api/users`
+- `POST /api/users`
+- `PUT /api/users/{id}`
+- `DELETE /api/users/{id}`
 
-`supabase/seed.sql` contains optional sample LMS data. For a real Supabase project, create matching Auth users first, replace the UUIDs in `seed.sql` with those Auth user IDs, then run the seed file. This keeps development data real and Auth-backed instead of relying on frontend-only demo state.
+Classes:
 
-## Local Development
+- `GET /api/classes`
+- `POST /api/classes`
+- `POST /api/classes/join`
+- `GET /api/classes/{id}`
+- `DELETE /api/classes/{id}`
+
+Assignments:
+
+- `GET /api/assignments`
+- `POST /api/assignments`
+- `PUT /api/assignments/{id}`
+- `DELETE /api/assignments/{id}`
+
+Submissions:
+
+- `GET /api/submissions`
+- `POST /api/submissions`
+- `PUT /api/submissions/{id}/grade`
+
+Dashboard compatibility:
+
+- `GET /api/dashboard/bootstrap`
+- `GET /api/announcements`
+- `POST /api/announcements`
+- `GET /api/notifications`
+- `PUT /api/notifications/{id}/read`
+- `PUT /api/notifications/read-all`
+- `POST /api/files`
+
+## Run Locally
+
+1. Start MySQL 8 and create the database:
+
+```bash
+mysql -u root -p < database/schema.sql
+```
+
+2. Start the backend:
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+The backend runs at `http://localhost:8080`.
+
+3. Start the frontend:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the Vite URL printed in the terminal, usually `http://localhost:5173`.
+The frontend usually runs at `http://localhost:5173`.
 
-## Production Deployment
+4. Register users from the app. Choose `Student` or `Teacher` during signup. To create an admin, update the user role in MySQL:
 
-Set these Vercel environment variables for Production, Preview, and Development:
-
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-- `VITE_APP_NAME`
-
-Vercel settings:
-
-- Framework: Vite
-- Build command: `npm run build`
-- Output directory: `dist`
-
-No Express server or `/api` rewrite is required.
+```sql
+update users set role = 'ADMIN' where email = 'admin@example.com';
+```
 
 ## Verification
+
+Frontend:
 
 ```bash
 npm run lint
 npm run build
 ```
 
-The app fails loudly with a startup error if required Supabase environment variables are missing, rather than silently connecting to a fake backend.
+Backend:
+
+```bash
+cd backend
+mvn test
+```
+
+## Notes
+
+- JWTs are stored in `localStorage` under `smartclass_token`.
+- Frontend API calls attach `Authorization: Bearer <token>` automatically.
+- Uploaded files are stored in the backend `uploads/` folder and served from `/uploads/**`.
+- `spring.jpa.hibernate.ddl-auto=update` is convenient for local MVP work. For production, replace it with versioned migrations such as Flyway or Liquibase.

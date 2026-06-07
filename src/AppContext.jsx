@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, api, setToken } from './api.js';
-import { supabase } from './lib/supabaseClient.js';
 
 import { AppContext } from './app-context.js';
 
@@ -73,34 +72,10 @@ export function AppProvider({ children }) {
     }
 
     loadSession();
-    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setData(emptyData());
-      }
-    });
-
     return () => {
       mounted = false;
-      listener.subscription.unsubscribe();
     };
   }, [refresh]);
-
-  useEffect(() => {
-    if (!user) return undefined;
-    const channel = supabase
-      .channel(`smartclass-live-${user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'classrooms' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'enrollments' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, refresh)
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [refresh, user]);
 
   const login = async (email, password) => {
     setError(null);

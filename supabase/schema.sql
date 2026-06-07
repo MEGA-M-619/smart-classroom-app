@@ -1,7 +1,0 @@
--- Canonical SmartClass LMS SaaS schema.
--- Apply the migration below in Supabase SQL Editor or with the Supabase CLI:
---
---   supabase/migrations/202605260001_lms_saas_schema.sql
---
--- This file is intentionally kept as a short pointer so the migration history
--- remains the source of truth for production and future environments.
