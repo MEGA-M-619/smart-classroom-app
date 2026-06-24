@@ -3,6 +3,11 @@ import { useApp } from "./app-context.js";
 import { getToken } from "./api.js";
 import { ClassActionModals } from "./classModals.jsx";
 import { AttendancePage } from "./pages/AttendancePage.jsx";
+import { Onboarding } from "./pages/Onboarding.jsx";
+import { GradebookPage } from "./pages/GradebookPage.jsx";
+import { AnalyticsPage } from "./pages/AnalyticsPage.jsx";
+import { AIPage } from "./pages/AIPage.jsx";
+import { DiscussionsPage } from "./pages/DiscussionsPage.jsx";
 import { useToast } from "./components/Toast.jsx";
 import { useTheme } from "./hooks/useTheme.js";
 
@@ -242,13 +247,15 @@ function AuthPage({ onAuth }) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ user, page, setPage, onLogout }) {
+function Sidebar({ user, page, setPage, onLogout, mobileOpen, onCloseMobile }) {
   const studentNav = [
     { id: "dashboard", icon: "🏠", label: "Dashboard" },
     { id: "classes", icon: "📚", label: "My Classes" },
     { id: "assignments", icon: "📝", label: "Assignments" },
     { id: "submissions", icon: "📬", label: "My Submissions" },
     { id: "attendance", icon: "📋", label: "Attendance" },
+    { id: "discussions", icon: "💬", label: "Discussions" },
+    { id: "ai", icon: "✨", label: "AI Coach" },
     { id: "calendar", icon: "📅", label: "Calendar" },
     { id: "announcements", icon: "📢", label: "Announcements" },
     { id: "profile", icon: "👤", label: "Profile" },
@@ -257,8 +264,12 @@ function Sidebar({ user, page, setPage, onLogout }) {
     { id: "dashboard", icon: "🏠", label: "Dashboard" },
     { id: "classes", icon: "📚", label: "My Classes" },
     { id: "assignments", icon: "📝", label: "Assignments" },
+    { id: "gradebook", icon: "📊", label: "Gradebook" },
     { id: "submissions", icon: "📬", label: "Submissions" },
     { id: "attendance", icon: "📋", label: "Attendance" },
+    { id: "analytics", icon: "📈", label: "Analytics" },
+    { id: "discussions", icon: "💬", label: "Discussions" },
+    { id: "ai", icon: "✨", label: "AI Studio" },
     { id: "calendar", icon: "📅", label: "Calendar" },
     { id: "announcements", icon: "📢", label: "Announcements" },
     { id: "profile", icon: "👤", label: "Profile" },
@@ -267,6 +278,8 @@ function Sidebar({ user, page, setPage, onLogout }) {
     { id: "dashboard", icon: "🏠", label: "Dashboard" },
     { id: "users", icon: "👥", label: "Users" },
     { id: "classes", icon: "📚", label: "All Classes" },
+    { id: "analytics", icon: "📈", label: "Analytics" },
+    { id: "ai", icon: "✨", label: "AI Studio" },
     { id: "reports", icon: "📊", label: "Reports" },
     { id: "settings", icon: "⚙️", label: "Settings" },
     { id: "profile", icon: "👤", label: "Profile" },
@@ -276,7 +289,7 @@ function Sidebar({ user, page, setPage, onLogout }) {
   const roleColors = { student: COLORS.emerald, teacher: COLORS.indigo, admin: COLORS.amber };
 
   return (
-    <aside className="sca-sidebar" aria-label="Primary navigation">
+    <aside className={`sca-sidebar ${mobileOpen ? 'open' : ''}`} aria-label="Primary navigation">
       <div style={{ padding: "20px 24px", borderBottom: "1px solid #f1f5f9" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, background: COLORS.indigo, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🎓</div>
@@ -286,7 +299,7 @@ function Sidebar({ user, page, setPage, onLogout }) {
 
       <div style={{ flex: 1, overflowY: "auto", paddingTop: 12 }}>
         {navItems.map(item => (
-          <div key={item.id} className={`sca-nav-item ${page === item.id ? "active" : ""}`} onClick={() => setPage(item.id)}>
+          <div key={item.id} className={`sca-nav-item ${page === item.id ? "active" : ""}`} onClick={() => { setPage(item.id); onCloseMobile?.(); }} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setPage(item.id)}>
             <span style={{ fontSize: 17 }}>{item.icon}</span>
             <span>{item.label}</span>
           </div>
@@ -308,13 +321,16 @@ function Sidebar({ user, page, setPage, onLogout }) {
 }
 
 // ─── Topbar ───────────────────────────────────────────────────────────────────
-function Topbar({ title, user, notifCount, onToggleTheme }) {
-  const { notifications } = useApp();
+function Topbar({ title, user, notifCount, onToggleTheme, onMenuClick }) {
+  const { notifications, markNotificationRead, markAllNotificationsRead } = useApp();
   const [showNotif, setShowNotif] = useState(false);
 
   return (
     <div className="sca-topbar">
-      <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--sca-text)" }}>{title}</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button type="button" className="sca-btn sca-btn-ghost sca-menu-btn" onClick={onMenuClick} aria-label="Open menu">☰</button>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--sca-text)" }}>{title}</h1>
+      </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
         <button type="button" className="sca-btn sca-btn-ghost" style={{ padding: "8px 12px" }} onClick={onToggleTheme} aria-label="Toggle dark mode">
           {user.darkMode ? "☀️" : "🌙"}
@@ -325,10 +341,15 @@ function Topbar({ title, user, notifCount, onToggleTheme }) {
             {notifCount > 0 && <span style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, background: "#ef4444", borderRadius: "50%" }} />}
           </button>
           {showNotif && (
-            <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 320, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, boxShadow: "0 8px 30px rgba(0,0,0,.12)", zIndex: 200 }}>
-              <div style={{ padding: "14px 16px", borderBottom: "1px solid #f1f5f9", fontWeight: 600, fontSize: 14 }}>Notifications</div>
+            <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 320, background: "var(--sca-surface)", border: "1px solid var(--sca-border)", borderRadius: 14, boxShadow: "0 8px 30px rgba(0,0,0,.12)", zIndex: 200 }}>
+              <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--sca-border)", fontWeight: 600, fontSize: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Notifications</span>
+                {notifCount > 0 && <button type="button" className="sca-btn sca-btn-ghost" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => markAllNotificationsRead()}>Mark all read</button>}
+              </div>
+              <div className="sca-notif-panel">
+              {notifications.length === 0 && <p style={{ padding: 16, fontSize: 13, color: COLORS.textMuted }}>No notifications yet.</p>}
               {notifications.map(n => (
-                <div key={n.id} style={{ padding: "12px 16px", borderBottom: "1px solid #f8fafc", display: "flex", gap: 10, alignItems: "flex-start", background: n.read ? "#fff" : "#f8faff" }}>
+                <div key={n.id} role="button" tabIndex={0} onClick={() => !n.read && markNotificationRead(n.id)} style={{ padding: "12px 16px", borderBottom: "1px solid var(--sca-border)", display: "flex", gap: 10, alignItems: "flex-start", background: n.read ? "transparent" : "var(--sca-surface-muted)", cursor: 'pointer' }}>
                   <span style={{ fontSize: 16 }}>{n.icon}</span>
                   <div>
                     <p style={{ fontSize: 13, lineHeight: 1.5, color: COLORS.text }}>{n.text}</p>
@@ -336,6 +357,7 @@ function Topbar({ title, user, notifCount, onToggleTheme }) {
                   </div>
                 </div>
               ))}
+              </div>
             </div>
           )}
         </div>
@@ -643,7 +665,7 @@ function AdminDashboard() {
 
 // ─── Classes Page ─────────────────────────────────────────────────────────────
 function ClassesPage({ user, setPage }) {
-  const { classes, materials, assignments, announcements, joinClass, createClass, createAssignment, createAnnouncement, uploadMaterial, submitAssignment, downloadMaterial } = useApp();
+  const { classes, materials, assignments, announcements, joinClass, createClass, createAssignment, createAnnouncement, uploadMaterial, submitAssignment, downloadMaterial, getClassInvite } = useApp();
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState("materials");
   const [joinModal, setJoinModal] = useState(false);
@@ -701,6 +723,14 @@ function ClassesPage({ user, setPage }) {
             <div style={{ background: "rgba(255,255,255,.2)", borderRadius: 12, padding: "10px 16px", textAlign: "center" }}>
               <p style={{ fontSize: 12, opacity: .8 }}>Class Code</p>
               <p style={{ fontSize: 22, fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{cls.code}</p>
+              {user.role === "teacher" && (
+                <button type="button" className="sca-btn sca-btn-ghost" style={{ marginTop: 8, fontSize: 11, color: '#fff', borderColor: 'rgba(255,255,255,.4)' }} onClick={async () => {
+                  const inv = await getClassInvite(cls.id);
+                  const link = inv.inviteUrl || `${window.location.origin}${inv.joinPath || ''}`;
+                  await navigator.clipboard?.writeText(link);
+                  alert('Invite link copied!');
+                }}>Copy invite link</button>
+              )}
             </div>
           </div>
         </div>
@@ -1554,7 +1584,13 @@ export default function App() {
   const [view, setView] = useState("landing");
   const { user, logout, notifications, loading, error, updateProfile, setUser } = useApp();
   const [page, setPage] = useState("dashboard");
+  const [mobileNav, setMobileNav] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   useTheme(user);
+
+  useEffect(() => {
+    if (user && !user.onboardingComplete) setShowOnboarding(true);
+  }, [user?.id, user?.onboardingComplete]);
 
   const handleAuth = () => { setView("app"); setPage("dashboard"); };
   const handleLogout = () => { logout(); setView("landing"); setPage("dashboard"); };
@@ -1567,8 +1603,9 @@ export default function App() {
 
   const pageTitle = {
     dashboard: "Dashboard", classes: "Classes", assignments: "Assignments", attendance: "Attendance",
-    submissions: "Submissions", calendar: "Calendar", announcements: "Announcements", profile: "Profile",
-    users: "Users", reports: "Reports", settings: "Settings",
+    submissions: "Submissions", gradebook: "Gradebook", analytics: "Analytics", discussions: "Discussions",
+    ai: user?.role === "student" ? "AI Coach" : "AI Studio", calendar: "Calendar", announcements: "Announcements",
+    profile: "Profile", users: "Users", reports: "Reports", settings: "Settings",
   };
   const unreadNotifs = notifications.filter(n => !n.read).length;
 
@@ -1593,6 +1630,10 @@ export default function App() {
     if (page === "classes") return <ClassesPage user={user} setPage={setPage} />;
     if (page === "assignments") return <AssignmentsPage user={user} setPage={setPage} />;
     if (page === "attendance") return <AttendancePage user={user} />;
+    if (page === "gradebook") return <GradebookPage user={user} />;
+    if (page === "analytics") return <AnalyticsPage user={user} />;
+    if (page === "discussions") return <DiscussionsPage user={user} />;
+    if (page === "ai") return <AIPage user={user} />;
     if (page === "submissions") return <SubmissionsPage user={user} />;
     if (page === "calendar") return <CalendarPage user={user} />;
     if (page === "announcements") return <AnnouncementsPage user={user} />;
@@ -1604,10 +1645,12 @@ export default function App() {
 
   return (
     <div className="sca-root">
+      {showOnboarding && <Onboarding user={user} onComplete={() => setShowOnboarding(false)} />}
+      {mobileNav && <div className="sca-sidebar-backdrop" onClick={() => setMobileNav(false)} aria-hidden="true" />}
       {error && <div style={{ background: "#fee2e2", color: "#dc2626", padding: "10px 28px", fontSize: 13 }}>{error}</div>}
-      <Sidebar user={user} page={page} setPage={setPage} onLogout={handleLogout} />
+      <Sidebar user={user} page={page} setPage={setPage} onLogout={handleLogout} mobileOpen={mobileNav} onCloseMobile={() => setMobileNav(false)} />
       <div className="sca-main">
-        <Topbar title={pageTitle[page] || "SmartClass"} user={user} notifCount={unreadNotifs} onToggleTheme={toggleTheme} />
+        <Topbar title={pageTitle[page] || "SmartClass"} user={user} notifCount={unreadNotifs} onToggleTheme={toggleTheme} onMenuClick={() => setMobileNav(true)} />
         {error && <div className="sca-alert" role="alert">{error}</div>}
         <main>{renderPage()}</main>
       </div>

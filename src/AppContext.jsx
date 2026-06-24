@@ -130,6 +130,24 @@ export function AppProvider({ children }) {
     getClassAttendance: (classId, date) => api.getClassAttendance(classId, date),
     saveClassAttendance: (classId, date, records) =>
       run(() => api.saveClassAttendance(classId, date, records)),
+    completeOnboarding: () => run(() => api.completeOnboarding().then((r) => { setUser(r.user); return r; })),
+    getClassInvite: (classId) => api.getClassInvite(classId),
+    joinClassInvite: (token) => run(() => api.joinClassInvite(token)),
+    getDiscussions: (classId) => api.getDiscussions(classId),
+    createDiscussion: (body) => run(() => api.createDiscussion(body)),
+    getDiscussionReplies: (id) => api.getDiscussionReplies(id),
+    replyDiscussion: (id, body) => run(() => api.replyDiscussion(id, body)),
+    getMessages: () => api.getMessages(),
+    sendMessage: (body) => run(() => api.sendMessage(body)),
+    getLearningGoals: () => api.getLearningGoals(),
+    createLearningGoal: (body) => run(() => api.createLearningGoal(body)),
+    updateLearningGoal: (id, body) => run(() => api.updateLearningGoal(id, body)),
+    getGradebook: (classId) => api.getGradebook(classId),
+    exportGradebook: (classId) => api.exportGradebook(classId),
+    getTeacherAnalytics: () => api.getTeacherAnalytics(),
+    getStudentAnalytics: () => api.getStudentAnalytics(),
+    generateAI: (body) => api.generateAI(body),
+    getAuditLogs: () => api.getAuditLogs(),
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

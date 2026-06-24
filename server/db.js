@@ -167,6 +167,7 @@ export function userPublic(row) {
     bio: rest.bio,
     darkMode: !!rest.dark_mode,
     emailNotifications: rest.email_notifications !== 0,
+    onboardingComplete: !!rest.onboarding_complete,
     createdAt: rest.created_at,
   };
 }
@@ -186,5 +187,6 @@ export function classWithMeta(cls, teacherName, studentCount) {
     schedule: cls.schedule,
     room: cls.room,
     maxStudents: cls.max_students,
+    inviteToken: cls.invite_token || null,
   };
 }

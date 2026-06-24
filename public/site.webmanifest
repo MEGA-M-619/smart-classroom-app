@@ -1,15 +1,14 @@
 {
-  "name": "SmartClass",
+  "name": "SmartClass — Classroom Platform",
   "short_name": "SmartClass",
+  "description": "Modern classroom management with AI, analytics, and Smart Pulse insights.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",
   "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
+  "categories": ["education", "productivity"],
   "icons": [
-    {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
-    }
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }

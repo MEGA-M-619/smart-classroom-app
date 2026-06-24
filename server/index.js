@@ -12,6 +12,8 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { corsOptions, createRateLimiter, errorHandler, notFound, requestLogger, securityHeaders } from './middleware.js';
 import { assertDate, assertEmail, assertPassword, assertRole, asPositiveNumber, cleanString, requireFields } from './validation.js';
+import { registerPlatformRoutes } from './routes/platform.js';
+import crypto from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = config.port;
@@ -466,15 +468,16 @@ app.get('/api/bootstrap', auth, (req, res) => {
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 app.patch('/api/users/me', auth, (req, res) => {
-  const { name, email, phone, bio, darkMode, emailNotifications } = req.body;
+  const { name, email, phone, bio, darkMode, emailNotifications, onboardingComplete } = req.body;
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   db.prepare(`
-    UPDATE users SET name=?, email=?, phone=?, bio=?, dark_mode=?, email_notifications=?
+    UPDATE users SET name=?, email=?, phone=?, bio=?, dark_mode=?, email_notifications=?, onboarding_complete=?
     WHERE id=?
   `).run(
     name ?? row.name, email ?? row.email, phone ?? row.phone, bio ?? row.bio,
     darkMode !== undefined ? (darkMode ? 1 : 0) : row.dark_mode,
     emailNotifications !== undefined ? (emailNotifications ? 1 : 0) : row.email_notifications,
+    onboardingComplete !== undefined ? (onboardingComplete ? 1 : 0) : row.onboarding_complete,
     req.user.id,
   );
   res.json({ user: userPublic(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)) });
@@ -522,10 +525,11 @@ app.post('/api/classes', auth, requireRole('teacher', 'admin'), (req, res) => {
   const { description, schedule, room, semester, color, icon } = req.body;
   const code = (req.body.code || name.replace(/\s+/g, '').slice(0, 6).toUpperCase() + Math.floor(100 + Math.random() * 900)).toUpperCase();
   const teacherId = req.user.role === 'admin' && req.body.teacherId ? req.body.teacherId : req.user.id;
+  const inviteToken = crypto.randomBytes(16).toString('hex');
   const r = db.prepare(`
-    INSERT INTO classes (name, code, teacher_id, color, icon, semester, description, schedule, room)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(name, code, teacherId, color || '#6366f1', icon || '📚', semester || 'Spring 2025', description || '', schedule || '', room || '');
+    INSERT INTO classes (name, code, teacher_id, color, icon, semester, description, schedule, room, invite_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(name, code, teacherId, color || '#6366f1', icon || '📚', semester || 'Spring 2025', description || '', schedule || '', room || '', inviteToken);
   const cls = mapClass(db.prepare('SELECT * FROM classes WHERE id = ?').get(r.lastInsertRowid));
   res.status(201).json({ class: cls });
 });
@@ -832,6 +836,8 @@ app.post('/api/admin/seed', auth, requireRole('admin'), async (_req, res) => {
   await import('./seed.js');
   res.json({ ok: true, message: 'Database re-seeded with demo data.' });
 });
+
+registerPlatformRoutes(app, { auth, requireRole });
 
 const clientDist = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(path.join(clientDist, 'index.html'))) {
