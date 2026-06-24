@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useApp } from "./app-context.js";
+import { getToken } from "./api.js";
 import { ClassActionModals } from "./classModals.jsx";
 import { AttendancePage } from "./pages/AttendancePage.jsx";
 import { useToast } from "./components/Toast.jsx";
@@ -104,7 +105,7 @@ function LandingPage({ onLogin }) {
         </p>
         <div style={{ display: "flex", gap: 12 }}>
           <button className="sca-btn sca-btn-primary" style={{ padding: "14px 28px", fontSize: 16 }} onClick={onLogin}>Start for Free</button>
-          <button className="sca-btn sca-btn-ghost" style={{ padding: "14px 28px", fontSize: 16 }} onClick={onLogin}>Sign In →</button>
+          <button className="sca-btn sca-btn-ghost" style={{ padding: "14px 28px", fontSize: 16 }} onClick={onLogin}>See Demo →</button>
         </div>
 
         {/* Features */}
@@ -149,10 +150,10 @@ function AuthPage({ onAuth }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const sampleAccounts = [
-    { label: "👨‍🏫 Teacher account", email: "sarah@university.edu", password: "teacher123" },
-    { label: "👨‍🎓 Student account", email: "alex@student.edu", password: "student123" },
-    { label: "🔧 Admin account", email: "admin@system.edu", password: "admin123" },
+  const demoAccounts = [
+    { label: "👨‍🏫 Teacher Demo", email: "sarah@university.edu", password: "teacher123" },
+    { label: "👨‍🎓 Student Demo", email: "alex@student.edu", password: "student123" },
+    { label: "🔧 Admin Demo", email: "admin@system.edu", password: "admin123" },
   ];
 
   const handleSubmit = async () => {
@@ -181,16 +182,14 @@ function AuthPage({ onAuth }) {
         <p style={{ fontSize: 16, opacity: .85, textAlign: "center", lineHeight: 1.7, maxWidth: 320 }}>
           A modern classroom management platform for students and educators.
         </p>
-        {import.meta.env.DEV && (
-          <div style={{ marginTop: 48, display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}>
-            {sampleAccounts.map(d => (
-              <button key={d.email} className="sca-btn" style={{ background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", borderRadius: 10 }}
-                onClick={() => { setForm(f => ({ ...f, email: d.email, password: d.password })); setError(""); }}>
-                {d.label}
-              </button>
-            ))}
-          </div>
-        )}
+        <div style={{ marginTop: 48, display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 300 }}>
+          {demoAccounts.map(d => (
+            <button key={d.email} className="sca-btn" style={{ background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", borderRadius: 10 }}
+              onClick={() => { setForm(f => ({ ...f, email: d.email, password: d.password })); setError(""); }}>
+              {d.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Right panel */}
@@ -347,7 +346,7 @@ function Topbar({ title, user, notifCount, onToggleTheme }) {
 }
 
 // ─── Student Dashboard ────────────────────────────────────────────────────────
-function StudentDashboard({ user }) {
+function StudentDashboard({ user, setPage }) {
   const { classes, assignments, announcements, submissions, stats } = useApp();
   const studentClasses = classes;
   const pendingAssignments = assignments.filter(a => a.status === "active" && !a.submitted);
@@ -644,7 +643,7 @@ function AdminDashboard() {
 
 // ─── Classes Page ─────────────────────────────────────────────────────────────
 function ClassesPage({ user, setPage }) {
-  const { classes, materials, assignments, announcements, classStudents, joinClass, createClass, createAssignment, createAnnouncement, uploadMaterial, submitAssignment, downloadMaterial } = useApp();
+  const { classes, materials, assignments, announcements, joinClass, createClass, createAssignment, createAnnouncement, uploadMaterial, submitAssignment, downloadMaterial } = useApp();
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState("materials");
   const [joinModal, setJoinModal] = useState(false);
@@ -659,13 +658,12 @@ function ClassesPage({ user, setPage }) {
   const [uploadForm, setUploadForm] = useState({ title: "", type: "pdf", file: null, classId: "" });
   const [submitModal, setSubmitModal] = useState(null);
   const [submitFile, setSubmitFile] = useState(null);
-  const [submitText, setSubmitText] = useState("");
   const myClasses = classes;
 
   const modalProps = {
     user, classes, selected,
     joinModal, setJoinModal, joinCode, setJoinCode, joinClass,
-    submitModal, setSubmitModal, submitFile, setSubmitFile, submitText, setSubmitText, submitAssignment,
+    submitModal, setSubmitModal, submitFile, setSubmitFile, submitAssignment,
     showCreateClass, setShowCreateClass, createClassForm, setCreateClassForm, createClass,
     showCreateAsgn, setShowCreateAsgn, asgnForm, setAsgnForm, createAssignment,
     showUpload, setShowUpload, uploadForm, setUploadForm, uploadMaterial,
@@ -677,7 +675,6 @@ function ClassesPage({ user, setPage }) {
     const mats = materials.filter(m => m.classId === cls.id);
     const asgns = assignments.filter(a => a.classId === cls.id);
     const anncs = announcements.filter(a => a.classId === cls.id);
-    const students = classStudents?.[cls.id] || [];
 
     return (
       <div className="fade-in" style={{ padding: 28 }}>
@@ -710,10 +707,10 @@ function ClassesPage({ user, setPage }) {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#f1f5f9", borderRadius: 12, padding: 4, width: "fit-content" }}>
-          {["materials", "assignments", "announcements", ...(user.role === "teacher" ? ["students"] : [])].map(t => (
+          {["materials", "assignments", "announcements"].map(t => (
             <button key={t} className="sca-btn" onClick={() => setTab(t)}
               style={{ background: tab === t ? "#fff" : "transparent", color: tab === t ? COLORS.indigo : COLORS.textMuted, border: "none", boxShadow: tab === t ? "0 1px 4px rgba(0,0,0,.1)" : "none", textTransform: "capitalize" }}>
-              {t === "materials" ? "📁" : t === "assignments" ? "📝" : t === "students" ? "👥" : "📢"} {t}
+              {t === "materials" ? "📁" : t === "assignments" ? "📝" : "📢"} {t}
             </button>
           ))}
         </div>
@@ -809,30 +806,6 @@ function ClassesPage({ user, setPage }) {
             </div>
           </div>
         )}
-        {tab === "students" && user.role === "teacher" && (
-          <div className="sca-card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ fontWeight: 600 }}>Students</h3>
-              <Badge type="active" label={`${students.length} enrolled`} />
-            </div>
-            {students.length === 0 ? (
-              <EmptyState title="No students yet" body="Share the class code with students so they can join." />
-            ) : (
-              <table className="sca-table">
-                <thead><tr><th>Student</th><th>Email</th><th>Status</th></tr></thead>
-                <tbody>
-                  {students.map(student => (
-                    <tr key={student.id}>
-                      <td><div style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar name={student.name} color={COLORS.emerald} size={32} /><span style={{ fontWeight: 500 }}>{student.name}</span></div></td>
-                      <td style={{ color: COLORS.textMuted }}>{student.email}</td>
-                      <td><Badge type="active" label="Enrolled" /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
       <ClassActionModals {...modalProps} />
       </div>
     );
@@ -885,7 +858,6 @@ function AssignmentsPage({ user, setPage }) {
   const [filter, setFilter] = useState("all");
   const [submitModal, setSubmitModal] = useState(null);
   const [submitFile, setSubmitFile] = useState(null);
-  const [submitText, setSubmitText] = useState("");
   const [showCreateAsgn, setShowCreateAsgn] = useState(false);
   const [asgnForm, setAsgnForm] = useState({ title: "", description: "", dueDate: "", points: 100, type: "Assignment", classId: "" });
   const teacherClasses = classes.filter(c => c.teacherId === user.id);
@@ -955,7 +927,7 @@ function AssignmentsPage({ user, setPage }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
               <label style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, display: "block" }}>Class</label>
-              <select className="sca-input" value={asgnForm.classId || teacherClasses[0]?.id || ""} onChange={e => setAsgnForm(f => ({ ...f, classId: e.target.value }))}>
+              <select className="sca-input" value={asgnForm.classId || teacherClasses[0]?.id || ""} onChange={e => setAsgnForm(f => ({ ...f, classId: Number(e.target.value) }))}>
                 {teacherClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
@@ -975,7 +947,7 @@ function AssignmentsPage({ user, setPage }) {
               <button className="sca-btn sca-btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowCreateAsgn(false)}>Cancel</button>
               <button className="sca-btn sca-btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => {
                 if (!asgnForm.title?.trim() || !asgnForm.dueDate) return alert("Title and due date are required");
-                await createAssignment({ ...asgnForm, classId: asgnForm.classId || teacherClasses[0]?.id });
+                await createAssignment({ ...asgnForm, classId: Number(asgnForm.classId || teacherClasses[0]?.id) });
                 setShowCreateAsgn(false);
                 setAsgnForm({ title: "", description: "", dueDate: "", points: 100, type: "Assignment", classId: teacherClasses[0]?.id || "" });
               }}>Create</button>
@@ -987,10 +959,9 @@ function AssignmentsPage({ user, setPage }) {
       {submitModal && (
         <Modal title={`Submit — ${submitModal.title}`} onClose={() => setSubmitModal(null)}>
           <input type="file" className="sca-input" onChange={e => setSubmitFile(e.target.files?.[0] || null)} style={{ marginBottom: 12 }} />
-          <textarea className="sca-input" rows={5} placeholder="Write your answer or notes for the teacher" value={submitText} onChange={e => setSubmitText(e.target.value)} style={{ resize: "vertical", marginBottom: 12 }} />
           <div style={{ display: "flex", gap: 10 }}>
             <button className="sca-btn sca-btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setSubmitModal(null)}>Cancel</button>
-            <button className="sca-btn sca-btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => { await submitAssignment(submitModal.id, submitFile, submitFile?.name || "", submitText); setSubmitModal(null); setSubmitFile(null); setSubmitText(""); }}>Submit</button>
+            <button className="sca-btn sca-btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => { await submitAssignment(submitModal.id, submitFile, submitFile?.name || "submission.zip"); setSubmitModal(null); setSubmitFile(null); }}>Submit</button>
           </div>
         </Modal>
       )}
@@ -1115,7 +1086,7 @@ function CalendarPage({ user }) {
             {teacherClasses.length > 0 && (
               <div>
                 <label style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, display: "block" }}>Class (optional)</label>
-                <select className="sca-input" value={eventForm.classId} onChange={e => setEventForm(f => ({ ...f, classId: e.target.value }))}>
+                <select className="sca-input" value={eventForm.classId} onChange={e => setEventForm(f => ({ ...f, classId: Number(e.target.value) }))}>
                   <option value="">— None —</option>
                   {teacherClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -1209,7 +1180,7 @@ function AnnouncementsPage({ user }) {
             <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, display: "block" }}>Message</label><textarea className="sca-input" rows={4} placeholder="Write your announcement…" style={{ resize: "none" }} value={postForm.body} onChange={e => setPostForm(f => ({ ...f, body: e.target.value }))} /></div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="sca-btn sca-btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowPost(false)}>Cancel</button>
-              <button className="sca-btn sca-btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => { await createAnnouncement({ classId: postForm.classId || classes[0]?.id, title: postForm.title, body: postForm.body, pinned: postForm.pinned }); setShowPost(false); setPostForm({ classId: "", title: "", body: "", pinned: false }); }}>Post</button>
+              <button className="sca-btn sca-btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => { await createAnnouncement({ classId: Number(postForm.classId || classes[0]?.id), title: postForm.title, body: postForm.body, pinned: postForm.pinned }); setShowPost(false); setPostForm({ classId: "", title: "", body: "", pinned: false }); }}>Post</button>
             </div>
           </div>
         </Modal>
@@ -1244,7 +1215,7 @@ function SubmissionsPage({ user }) {
           <div className="sca-card">
             <table className="sca-table">
               <thead>
-                <tr><th>Assignment</th><th>Submitted</th><th>Answer</th><th>File</th><th>Status</th><th>Grade</th><th>Feedback</th></tr>
+                <tr><th>Assignment</th><th>Submitted</th><th>File</th><th>Status</th><th>Grade</th><th>Feedback</th></tr>
               </thead>
               <tbody>
                 {submissions.map(s => {
@@ -1253,7 +1224,6 @@ function SubmissionsPage({ user }) {
                     <tr key={s.id}>
                       <td style={{ fontWeight: 500, fontSize: 13 }}>{a?.title || "Assignment"}</td>
                       <td style={{ fontSize: 12, color: COLORS.textMuted }}>{s.submittedAt}</td>
-                      <td style={{ fontSize: 13, color: COLORS.textMuted, maxWidth: 220, whiteSpace: "pre-wrap" }}>{s.textAnswer || "—"}</td>
                       <td>
                         {s.file ? (
                           <button type="button" className="sca-btn sca-btn-ghost" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => downloadSubmission(s.id, s.file)}>
@@ -1286,7 +1256,7 @@ function SubmissionsPage({ user }) {
       <div className="sca-card">
         <table className="sca-table">
           <thead>
-            <tr><th>Student</th><th>Assignment</th><th>Submitted</th><th>Answer</th><th>File</th><th>Status</th><th>Grade</th><th></th></tr>
+            <tr><th>Student</th><th>Assignment</th><th>Submitted</th><th>File</th><th>Status</th><th>Grade</th><th></th></tr>
           </thead>
           <tbody>
             {submissions.map(s => {
@@ -1296,7 +1266,6 @@ function SubmissionsPage({ user }) {
                   <td><div style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar name={s.studentName} color={COLORS.emerald} size={32} /><span style={{ fontWeight: 500, fontSize: 13 }}>{s.studentName}</span></div></td>
                   <td style={{ fontSize: 13 }}>{a?.title}</td>
                   <td style={{ fontSize: 12, color: COLORS.textMuted }}>{s.submittedAt}</td>
-                  <td style={{ fontSize: 13, color: COLORS.textMuted, maxWidth: 220, whiteSpace: "pre-wrap" }}>{s.textAnswer || "—"}</td>
                   <td>
                     <button type="button" className="sca-btn sca-btn-ghost" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => downloadSubmission(s.id, s.file)}>
                       📎 {s.file}
@@ -1603,7 +1572,7 @@ export default function App() {
   };
   const unreadNotifs = notifications.filter(n => !n.read).length;
 
-  if (loading && !user) {
+  if (loading && getToken() && !user) {
     return (
       <div className="sca-root sca-loading-screen">
         <div className="sca-spinner" />
