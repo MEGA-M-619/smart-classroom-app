@@ -6,6 +6,7 @@ initSchema();
 const hash = (p) => bcrypt.hashSync(p, 10);
 
 db.exec(`
+  DELETE FROM parent_student_links;
   DELETE FROM notifications;
   DELETE FROM attendance_records;
   DELETE FROM attendance_sessions;
@@ -34,6 +35,7 @@ const users = [
   { name: 'Prof. James Carter', email: 'james@university.edu', password: 'teacher123', role: 'teacher', department: 'Mathematics', phone: '+1 (555) 456-7890', bio: 'Specializes in applied mathematics.' },
   { name: 'Maria Santos', email: 'maria@student.edu', password: 'student123', role: 'student', major: 'Data Science', year: 'Senior', phone: '+1 (555) 567-8901', bio: 'AI/ML enthusiast.' },
   { name: 'Emma Williams', email: 'emma@student.edu', password: 'student123', role: 'student', major: 'Computer Science', year: 'Sophomore', phone: '+1 (555) 678-9012', bio: 'Focus on cybersecurity.' },
+  { name: 'Robert Johnson', email: 'parent@family.edu', password: 'parent123', role: 'parent', phone: '+1 (555) 789-0123', bio: 'Parent of Alex Johnson.' },
 ];
 
 const insUser = db.prepare(`
@@ -181,5 +183,10 @@ for (const code of ['WEB301', 'DSA201']) {
 db.prepare(`INSERT INTO settings (key, value) VALUES ('institution_name', 'SmartClass University')`).run();
 db.prepare(`INSERT INTO settings (key, value) VALUES ('academic_year', '2024–2025')`).run();
 db.prepare(`INSERT INTO settings (key, value) VALUES ('max_class_size', '50')`).run();
+
+db.prepare('INSERT INTO parent_student_links (parent_id, student_id, relationship) VALUES (?, ?)').run(
+  userId('parent@family.edu'),
+  userId('alex@student.edu'),
+);
 
 console.log('Database seeded successfully.');

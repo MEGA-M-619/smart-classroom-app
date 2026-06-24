@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { db, userPublic } from '../db.js';
 import { auditLog } from '../services/audit.js';
+import { notifyUser } from '../services/notifications.js';
 import { generateAIContent } from '../services/ai.js';
 import { cleanString, requireFields } from '../validation.js';
 
@@ -157,6 +158,9 @@ export function registerPlatformRoutes(app, { auth, requireRole }) {
     if (!thread || !canAccessClass(req.user, thread.class_id)) return res.status(404).json({ error: 'Not found' });
     const r = db.prepare('INSERT INTO discussion_replies (thread_id, author_id, body) VALUES (?, ?, ?)')
       .run(thread.id, req.user.id, cleanString(req.body.body, 4000));
+    if (thread.author_id !== req.user.id) {
+      notifyUser(thread.author_id, `New reply on "${thread.title}"`, { type: 'discussion' });
+    }
     res.status(201).json({ id: r.lastInsertRowid });
   });
 
@@ -184,8 +188,11 @@ export function registerPlatformRoutes(app, { auth, requireRole }) {
 
   app.post('/api/messages', auth, (req, res) => {
     requireFields(req.body, ['recipientId', 'body']);
-    const r = db.prepare('INSERT INTO messages (sender_id, recipient_id, class_id, body) VALUES (?, ?, ?, ?)')
-      .run(req.user.id, Number(req.body.recipientId), req.body.classId || null, cleanString(req.body.body, 2000));
+    const recipientId = Number(req.body.recipientId);
+    const r = db.prepare('INSERT INTO messages (sender_id, recipient_id, class_id, body, thread_id) VALUES (?, ?, ?, ?, ?)')
+      .run(req.user.id, recipientId, req.body.classId || null, cleanString(req.body.body, 2000),
+        [Math.min(req.user.id, recipientId), Math.max(req.user.id, recipientId)].join(':'));
+    notifyUser(recipientId, `New message from ${db.prepare('SELECT name FROM users WHERE id = ?').get(req.user.id)?.name}`, { type: 'message' });
     res.status(201).json({ id: r.lastInsertRowid });
   });
 

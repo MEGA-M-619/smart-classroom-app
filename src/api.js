@@ -101,8 +101,8 @@ export const api = {
     else if (fileName) fd.append('fileName', fileName);
     return request(`/assignments/${assignmentId}/submit`, { method: 'POST', body: fd });
   },
-  gradeSubmission: (id, grade, feedback) =>
-    request(`/submissions/${id}/grade`, { method: 'PATCH', body: JSON.stringify({ grade, feedback }) }),
+  gradeSubmission: (id, grade, feedback, rubricScores) =>
+    request(`/submissions/${id}/grade`, { method: 'PATCH', body: JSON.stringify({ grade, feedback, rubricScores }) }),
   downloadSubmission: (id, fileName) => download(`/submissions/${id}/download`, fileName),
   createAnnouncement: (body) => request('/announcements', { method: 'POST', body: JSON.stringify(body) }),
   uploadMaterial: (classId, title, type, file) => {
@@ -146,4 +146,26 @@ export const api = {
   generateAI: (body) => request('/ai/generate', { method: 'POST', body: JSON.stringify(body) }),
   getAuditLogs: () => request('/admin/audit-logs'),
   gradebookExportUrl: (classId) => apiUrl(`/export/gradebook.csv?classId=${classId}`),
+  getParentStudents: () => request('/parent/students'),
+  getParentDashboard: (studentId) => request(`/parent/dashboard?studentId=${studentId}`),
+  linkParentStudent: (studentEmail, relationship) =>
+    request('/parent/link', { method: 'POST', body: JSON.stringify({ studentEmail, relationship }) }),
+  registerParent: (body) => request('/parent/register', { method: 'POST', body: JSON.stringify(body) }),
+  getNotificationPrefs: () => request('/users/me/notification-prefs'),
+  updateNotificationPrefs: (prefs) =>
+    request('/users/me/notification-prefs', { method: 'PATCH', body: JSON.stringify({ prefs }) }),
+  getNotificationUpdates: (after) => request(`/notifications/updates?after=${after || 0}`),
+  getAssignmentRubric: (assignmentId) => request(`/assignments/${assignmentId}/rubric`),
+  saveAssignmentRubric: (assignmentId, criteria) =>
+    request(`/assignments/${assignmentId}/rubric`, { method: 'PUT', body: JSON.stringify({ criteria }) }),
+  updateEvent: (id, body) => request(`/events/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  exportCalendar: () => download('/calendar/export.ics', 'smartclass-calendar.ics'),
+  importCalendar: (events) => request('/calendar/import', { method: 'POST', body: JSON.stringify({ events }) }),
+  getPredictions: (classId) => request(`/analytics/predictions${classId ? `?classId=${classId}` : ''}`),
+  getSchoolPredictions: () => request('/analytics/predictions/school'),
+  getStudentPrediction: () => request('/analytics/predictions/student'),
+  getMessageThreads: () => request('/messages/threads'),
+  getMessageThread: (peerId) => request(`/messages/thread/${peerId}`),
+  searchMessages: (q) => request(`/messages/search?q=${encodeURIComponent(q)}`),
+  createSchoolAnnouncement: (body) => request('/announcements/school', { method: 'POST', body: JSON.stringify(body) }),
 };

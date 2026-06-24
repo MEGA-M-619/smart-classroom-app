@@ -13,6 +13,8 @@ import { logger } from './logger.js';
 import { corsOptions, createRateLimiter, errorHandler, notFound, requestLogger, securityHeaders } from './middleware.js';
 import { assertDate, assertEmail, assertPassword, assertRole, asPositiveNumber, cleanString, requireFields } from './validation.js';
 import { registerPlatformRoutes } from './routes/platform.js';
+import { registerParentRoutes } from './routes/parent.js';
+import { registerModuleRoutes, notifyUser, notifyParentsOfStudent } from './routes/modules.js';
 import crypto from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -56,9 +58,10 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, env: config.env, time
 
 function auth(req, res, next) {
   const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : req.query?.token;
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    req.user = jwt.verify(header.slice(7), JWT_SECRET);
+    req.user = jwt.verify(token, JWT_SECRET);
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });
@@ -111,6 +114,9 @@ function mapAssignment(a) {
     status: a.status,
     submissions: subs,
     type: a.type,
+    allowResubmit: !!a.allow_resubmit,
+    attachmentName: a.attachment_name || null,
+    attachmentPath: a.attachment_path || null,
   };
 }
 
@@ -185,11 +191,9 @@ function mapSubmission(s) {
     grade: s.grade,
     feedback: s.feedback,
     status: s.status,
+    rubricScores: (() => { try { return s.rubric_scores_json ? JSON.parse(s.rubric_scores_json) : null; } catch { return null; } })(),
+    textNote: s.text_note || '',
   };
-}
-
-function notify(userId, text, icon = '🔔') {
-  db.prepare('INSERT INTO notifications (user_id, text, icon) VALUES (?, ?, ?)').run(userId, text, icon);
 }
 
 function getClassEnrolledStudents(classId) {
@@ -324,10 +328,29 @@ app.get('/api/bootstrap', auth, (req, res) => {
   const role = req.user.role;
 
   let classes;
+  let linkedStudents = [];
   if (role === 'admin') {
     classes = db.prepare('SELECT * FROM classes ORDER BY id').all().map(mapClass);
   } else if (role === 'teacher') {
     classes = db.prepare('SELECT * FROM classes WHERE teacher_id = ? ORDER BY id').all(uid).map(mapClass);
+  } else if (role === 'parent') {
+    linkedStudents = db.prepare(`
+      SELECT u.id, u.name, u.email, u.avatar, u.major, u.year
+      FROM parent_student_links psl JOIN users u ON u.id = psl.student_id
+      WHERE psl.parent_id = ?
+    `).all(uid);
+    const studentIds = linkedStudents.map((s) => s.id);
+    if (studentIds.length) {
+      const ph = studentIds.map(() => '?').join(',');
+      const classRows = db.prepare(`
+        SELECT DISTINCT c.* FROM classes c
+        JOIN enrollments e ON e.class_id = c.id
+        WHERE e.user_id IN (${ph}) ORDER BY c.id
+      `).all(...studentIds);
+      classes = classRows.map(mapClass);
+    } else {
+      classes = [];
+    }
   } else {
     classes = db.prepare(`
       SELECT c.* FROM classes c
@@ -448,6 +471,7 @@ app.get('/api/bootstrap', auth, (req, res) => {
       : undefined,
     pendingGrades: role === 'teacher' ? submissions.filter((s) => s.status === 'submitted').length : undefined,
     totalStudents: role === 'teacher' ? classes.reduce((s, c) => s + c.students, 0) : undefined,
+    linkedStudents: role === 'parent' ? linkedStudents : undefined,
   };
 
   res.json({
@@ -463,21 +487,25 @@ app.get('/api/bootstrap', auth, (req, res) => {
     stats,
     attendanceSummary,
     attendanceRecent,
+    linkedStudents: role === 'parent' ? linkedStudents : undefined,
   });
 });
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 app.patch('/api/users/me', auth, (req, res) => {
-  const { name, email, phone, bio, darkMode, emailNotifications, onboardingComplete } = req.body;
+  const { name, email, phone, bio, darkMode, emailNotifications, onboardingComplete, themePreference, pushNotifications } = req.body;
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   db.prepare(`
-    UPDATE users SET name=?, email=?, phone=?, bio=?, dark_mode=?, email_notifications=?, onboarding_complete=?
+    UPDATE users SET name=?, email=?, phone=?, bio=?, dark_mode=?, email_notifications=?, onboarding_complete=?,
+      theme_preference=?, push_notifications=?
     WHERE id=?
   `).run(
     name ?? row.name, email ?? row.email, phone ?? row.phone, bio ?? row.bio,
     darkMode !== undefined ? (darkMode ? 1 : 0) : row.dark_mode,
     emailNotifications !== undefined ? (emailNotifications ? 1 : 0) : row.email_notifications,
     onboardingComplete !== undefined ? (onboardingComplete ? 1 : 0) : row.onboarding_complete,
+    themePreference ?? row.theme_preference ?? 'system',
+    pushNotifications !== undefined ? (pushNotifications ? 1 : 0) : (row.push_notifications ?? 1),
     req.user.id,
   );
   res.json({ user: userPublic(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)) });
@@ -617,7 +645,8 @@ app.post('/api/classes/:classId/attendance', auth, requireRole('teacher', 'admin
     if (!enrolled) continue;
     upsert.run(session.id, studentId, status, cleanString(record.note || '', 240));
     if (status === 'absent') {
-      notify(studentId, `Marked absent for ${cls.name} on ${sessionDate}`, '📋');
+      notifyUser(studentId, `Marked absent for ${cls.name} on ${sessionDate}`, { type: 'attendance' });
+      notifyParentsOfStudent(studentId, `Attendance: absent in ${cls.name} on ${sessionDate}`, { type: 'attendance' });
     }
   }
 
@@ -647,7 +676,7 @@ app.post('/api/classes/join', auth, requireRole('student'), (req, res) => {
   db.prepare('INSERT INTO enrollments (user_id, class_id) VALUES (?, ?)').run(req.user.id, cls.id);
   const student = db.prepare('SELECT name FROM users WHERE id = ?').get(req.user.id);
   const teacher = db.prepare('SELECT id FROM users WHERE id = ?').get(cls.teacher_id);
-  notify(teacher.id, `${student.name} joined ${cls.name}`, '👤');
+  notifyUser(teacher.id, `${student.name} joined ${cls.name}`, { type: 'general', icon: '👤' });
   res.json({ class: mapClass(cls) });
 });
 
@@ -657,21 +686,32 @@ app.post('/api/assignments', auth, requireRole('teacher', 'admin'), (req, res) =
   assertDate(req.body.dueDate);
   const classId = Number(req.body.classId);
   const title = cleanString(req.body.title, 180);
-  const { description, dueDate, points, type, status } = req.body;
+  const { description, dueDate, points, type, status, allowResubmit } = req.body;
   const cls = db.prepare('SELECT * FROM classes WHERE id = ?').get(classId);
   if (!cls) return res.status(404).json({ error: 'Class not found' });
   if (req.user.role === 'teacher' && cls.teacher_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
   const r = db.prepare(`
-    INSERT INTO assignments (class_id, title, description, due_date, points, type, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(classId, title, description || '', dueDate, points || 100, type || 'Assignment', status || 'active');
+    INSERT INTO assignments (class_id, title, description, due_date, points, type, status, allow_resubmit)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(classId, title, description || '', dueDate, points || 100, type || 'Assignment', status || 'active', allowResubmit ? 1 : 0);
   const a = mapAssignment(db.prepare('SELECT * FROM assignments WHERE id = ?').get(r.lastInsertRowid));
+  if (Array.isArray(req.body.rubric) && req.body.rubric.length) {
+    db.prepare('INSERT INTO rubrics (assignment_id, criteria_json) VALUES (?, ?)').run(
+      a.id,
+      JSON.stringify(req.body.rubric.map((c) => ({
+        name: cleanString(c.name, 80),
+        description: cleanString(c.description, 300),
+        maxPoints: Number(c.maxPoints) || 0,
+      }))),
+    );
+  }
   const eventType = String(type || 'Assignment').toLowerCase() === 'quiz' ? 'quiz' : 'assignment';
   db.prepare(`INSERT INTO events (title, date, type, color, assignment_id, class_id) VALUES (?, ?, ?, ?, ?, ?)`)
     .run(a.title, a.dueDate, eventType, cls.color, a.id, classId);
   const enrolled = db.prepare('SELECT user_id FROM enrollments WHERE class_id = ?').all(classId);
   for (const { user_id } of enrolled) {
-    notify(user_id, `New assignment: ${title} in ${cls.name}`, '📝');
+    notifyUser(user_id, `New assignment: ${title} in ${cls.name}`, { type: 'assignment' });
+    notifyParentsOfStudent(user_id, `New assignment for your student: ${title}`, { type: 'assignment' });
   }
   res.status(201).json({ assignment: a });
 });
@@ -685,35 +725,46 @@ app.post('/api/assignments/:id/submit', auth, requireRole('student'), upload.sin
   if (!enrolled) return res.status(403).json({ error: 'Not enrolled in this class' });
   const fileName = req.file?.originalname || req.body.fileName || 'submission.txt';
   const filePath = req.file ? `/uploads/${path.basename(req.file.path)}` : null;
-  const existing = db.prepare('SELECT id FROM submissions WHERE assignment_id = ? AND student_id = ?').get(assignmentId, req.user.id);
+  const existing = db.prepare('SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?').get(assignmentId, req.user.id);
+  const textNote = cleanString(req.body.textNote || '', 5000);
   if (existing) {
-    db.prepare(`UPDATE submissions SET file_name=?, file_path=?, submitted_at=datetime('now'), status='submitted', grade=NULL WHERE id=?`)
-      .run(fileName, filePath, existing.id);
+    if (existing.status === 'graded' && !asgn.allow_resubmit) {
+      return res.status(400).json({ error: 'Resubmission not allowed for this assignment.' });
+    }
+    db.prepare(`UPDATE submissions SET file_name=?, file_path=?, text_note=?, submitted_at=datetime('now'), status='submitted', grade=NULL, feedback=NULL, rubric_scores_json=NULL WHERE id=?`)
+      .run(fileName, filePath, textNote || null, existing.id);
     res.json({ submission: mapSubmission(db.prepare('SELECT * FROM submissions WHERE id = ?').get(existing.id)) });
   } else {
-    const r = db.prepare(`INSERT INTO submissions (assignment_id, student_id, file_name, file_path) VALUES (?, ?, ?, ?)`)
-      .run(assignmentId, req.user.id, fileName, filePath);
+    const r = db.prepare(`INSERT INTO submissions (assignment_id, student_id, file_name, file_path, text_note) VALUES (?, ?, ?, ?, ?)`)
+      .run(assignmentId, req.user.id, fileName, filePath, textNote || null);
     const sub = mapSubmission(db.prepare('SELECT * FROM submissions WHERE id = ?').get(r.lastInsertRowid));
     const cls = db.prepare('SELECT * FROM classes WHERE id = ?').get(asgn.class_id);
-    notify(cls.teacher_id, `${sub.studentName} submitted ${asgn.title}`, '📬');
+    notifyUser(cls.teacher_id, `${sub.studentName} submitted ${asgn.title}`, { type: 'assignment', icon: '📬' });
     res.status(201).json({ submission: sub });
   }
 });
 
 app.patch('/api/submissions/:id/grade', auth, requireRole('teacher', 'admin'), (req, res) => {
-  const { grade, feedback } = req.body;
+  const { grade, feedback, rubricScores } = req.body;
   const sub = db.prepare('SELECT * FROM submissions WHERE id = ?').get(req.params.id);
   if (!sub) return res.status(404).json({ error: 'Not found' });
   const asgn = db.prepare('SELECT * FROM assignments WHERE id = ?').get(sub.assignment_id);
   const cls = db.prepare('SELECT * FROM classes WHERE id = ?').get(asgn.class_id);
   if (req.user.role === 'teacher' && cls.teacher_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  const numericGrade = asPositiveNumber(grade);
+  let numericGrade = asPositiveNumber(grade);
+  if (Array.isArray(rubricScores) && rubricScores.length) {
+    numericGrade = rubricScores.reduce((sum, r) => sum + (Number(r.score) || 0), 0);
+  }
   if (!Number.isFinite(numericGrade) || numericGrade < 0 || numericGrade > asgn.points) {
     return res.status(400).json({ error: `Grade must be between 0 and ${asgn.points}.` });
   }
-  db.prepare(`UPDATE submissions SET grade=?, feedback=?, status='graded' WHERE id=?`).run(numericGrade, feedback || '', req.params.id);
+  const rubricJson = rubricScores ? JSON.stringify(rubricScores) : null;
+  db.prepare(`UPDATE submissions SET grade=?, feedback=?, status='graded', rubric_scores_json=? WHERE id=?`)
+    .run(numericGrade, feedback || '', rubricJson, req.params.id);
   const updated = mapSubmission(db.prepare('SELECT * FROM submissions WHERE id = ?').get(req.params.id));
-  notify(sub.student_id, `Your submission for "${asgn.title}" was graded: ${numericGrade}/${asgn.points} pts`, '✅');
+  notifyUser(sub.student_id, `Your submission for "${asgn.title}" was graded: ${numericGrade}/${asgn.points} pts`, { type: 'graded' });
+  if (feedback) notifyUser(sub.student_id, `Teacher feedback on "${asgn.title}"`, { type: 'feedback' });
+  notifyParentsOfStudent(sub.student_id, `Grade posted for "${asgn.title}": ${numericGrade}/${asgn.points}`, { type: 'graded' });
   res.json({ submission: updated });
 });
 
@@ -758,7 +809,7 @@ app.post('/api/announcements', auth, requireRole('teacher', 'admin'), (req, res)
   const ann = mapAnnouncement(db.prepare('SELECT * FROM announcements WHERE id = ?').get(r.lastInsertRowid));
   const enrolled = db.prepare('SELECT user_id FROM enrollments WHERE class_id = ?').all(classId);
   for (const { user_id } of enrolled) {
-    notify(user_id, `New announcement in ${cls.name}: ${title}`, '📢');
+    notifyUser(user_id, `New announcement in ${cls.name}: ${title}`, { type: 'announcement' });
   }
   res.status(201).json({ announcement: ann });
 });
@@ -837,6 +888,8 @@ app.post('/api/admin/seed', auth, requireRole('admin'), async (_req, res) => {
   res.json({ ok: true, message: 'Database re-seeded with demo data.' });
 });
 
+registerParentRoutes(app, { auth, requireRole });
+registerModuleRoutes(app, { auth, requireRole });
 registerPlatformRoutes(app, { auth, requireRole });
 
 const clientDist = path.join(__dirname, '..', 'dist');

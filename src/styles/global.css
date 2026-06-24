@@ -434,3 +434,51 @@
 .sca-menu-btn { display: none; padding: 8px 12px; }
 .sca-notif-panel { max-height: 360px; overflow-y: auto; }
 .sca-notif-actions { padding: 10px 16px; border-bottom: 1px solid var(--sca-border); }
+.sca-notif-badge {
+  position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px;
+  background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.sca-messages { display: grid; grid-template-columns: 280px 1fr; gap: 16px; min-height: 480px; }
+.sca-messages__sidebar { display: flex; flex-direction: column; gap: 8px; }
+.sca-messages__panel { display: flex; flex-direction: column; background: var(--sca-surface); border: 1px solid var(--sca-border); border-radius: 14px; overflow: hidden; }
+.sca-messages__list { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.sca-messages__composer { display: flex; gap: 10px; padding: 12px; border-top: 1px solid var(--sca-border); }
+.sca-msg { max-width: 75%; padding: 10px 14px; border-radius: 12px; background: var(--sca-bg); font-size: 14px; }
+.sca-msg--mine { align-self: flex-end; background: var(--sca-indigo-light); }
+.sca-badge { background: var(--sca-indigo); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 999px; }
+
+.sca-rubric { border: 1px solid var(--sca-border); border-radius: 12px; padding: 12px; }
+.sca-rubric__row { display: grid; grid-template-columns: 1fr 72px 40px; gap: 10px; align-items: center; margin-bottom: 10px; }
+.sca-rubric__score { width: 72px; }
+
+.sca-calendar-tabs { display: flex; gap: 8px; }
+.sca-calendar-layout { align-items: start; }
+.sca-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.sca-calendar-grid--head { margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--sca-text-muted); text-align: center; }
+.sca-calendar-day { min-height: 72px; padding: 6px; border-radius: 10px; background: var(--sca-bg); border: 1px solid var(--sca-border); }
+.sca-calendar-day--today { border-color: var(--sca-indigo); background: var(--sca-indigo-light); }
+.sca-calendar-day__num { font-size: 13px; font-weight: 600; display: block; margin-bottom: 4px; }
+.sca-calendar-event { font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-bottom: 2px; cursor: grab; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sca-calendar-week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+.sca-calendar-week-col { min-height: 200px; padding: 8px; border: 1px solid var(--sca-border); border-radius: 10px; background: var(--sca-bg); }
+.sca-calendar-week-col__head { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+
+.sca-nav-item:focus-visible,
+.sca-btn:focus-visible,
+.sca-input:focus-visible,
+.sca-thread:focus-visible {
+  outline: 2px solid var(--sca-indigo);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .sca-messages { grid-template-columns: 1fr; }
+  .sca-calendar-week-grid { grid-template-columns: 1fr; }
+  .sca-calendar-layout { grid-template-columns: 1fr !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

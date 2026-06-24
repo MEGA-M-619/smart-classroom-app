@@ -34,7 +34,7 @@ export function assertPassword(password, min = 8) {
   }
 }
 
-export function assertRole(role, allowed = ['student', 'teacher']) {
+export function assertRole(role, allowed = ['student', 'teacher', 'parent']) {
   if (!allowed.includes(role)) {
     const error = new Error('Invalid role.');
     error.status = 400;

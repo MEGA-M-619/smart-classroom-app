@@ -18,6 +18,7 @@ export function AppProvider({ children }) {
     stats: {},
     attendanceSummary: [],
     attendanceRecent: [],
+    linkedStudents: [],
   });
   const [loading, setLoading] = useState(() => Boolean(getToken()));
   const [error, setError] = useState(null);
@@ -38,6 +39,7 @@ export function AppProvider({ children }) {
       stats: boot.stats || {},
       attendanceSummary: boot.attendanceSummary || [],
       attendanceRecent: boot.attendanceRecent || [],
+      linkedStudents: boot.linkedStudents || [],
     });
     return boot;
   }, []);
@@ -78,7 +80,7 @@ export function AppProvider({ children }) {
     setData({
       classes: [], assignments: [], announcements: [], materials: [], events: [],
       notifications: [], submissions: [], users: [], settings: {}, stats: {},
-      attendanceSummary: [], attendanceRecent: [],
+      attendanceSummary: [], attendanceRecent: [], linkedStudents: [],
     });
   };
 
@@ -111,7 +113,8 @@ export function AppProvider({ children }) {
     createAssignment: (body) => run(() => api.createAssignment(body)),
     submitAssignment: (assignmentId, file, fileName) =>
       run(() => api.submitAssignment(assignmentId, file, fileName)),
-    gradeSubmission: (id, grade, feedback) => run(() => api.gradeSubmission(id, grade, feedback)),
+    gradeSubmission: (id, grade, feedback, rubricScores) =>
+      run(() => api.gradeSubmission(id, grade, feedback, rubricScores)),
     downloadSubmission: (id, fileName) => api.downloadSubmission(id, fileName),
     createAnnouncement: (body) => run(() => api.createAnnouncement(body)),
     uploadMaterial: (classId, title, type, file) =>
@@ -148,6 +151,35 @@ export function AppProvider({ children }) {
     getStudentAnalytics: () => api.getStudentAnalytics(),
     generateAI: (body) => api.generateAI(body),
     getAuditLogs: () => api.getAuditLogs(),
+    getParentStudents: () => api.getParentStudents(),
+    getParentDashboard: (studentId) => api.getParentDashboard(studentId),
+    linkParentStudent: (email, relationship) => run(() => api.linkParentStudent(email, relationship)),
+    getNotificationPrefs: () => api.getNotificationPrefs(),
+    updateNotificationPrefs: (prefs) => run(() => api.updateNotificationPrefs(prefs)),
+    getAssignmentRubric: (id) => api.getAssignmentRubric(id),
+    saveAssignmentRubric: (id, criteria) => run(() => api.saveAssignmentRubric(id, criteria)),
+    updateEvent: (id, body) => run(() => api.updateEvent(id, body)),
+    exportCalendar: () => api.exportCalendar(),
+    importCalendar: (events) => run(() => api.importCalendar(events)),
+    getPredictions: (classId) => api.getPredictions(classId),
+    getSchoolPredictions: () => api.getSchoolPredictions(),
+    getStudentPrediction: () => api.getStudentPrediction(),
+    getMessageThreads: () => api.getMessageThreads(),
+    getMessageThread: (peerId) => api.getMessageThread(peerId),
+    searchMessages: (q) => api.searchMessages(q),
+    mergeNotifications: (incoming) => {
+      setData((prev) => {
+        const existing = new Set(prev.notifications.map((n) => n.id));
+        const merged = [...incoming.filter((n) => !existing.has(n.id)).map((n) => ({
+          id: n.id,
+          text: n.text,
+          icon: n.icon,
+          read: n.read,
+          time: 'Just now',
+        })), ...prev.notifications];
+        return { ...prev, notifications: merged.slice(0, 50) };
+      });
+    },
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

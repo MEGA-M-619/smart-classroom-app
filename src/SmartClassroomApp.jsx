@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useApp } from "./app-context.js";
 import { getToken } from "./api.js";
+import { api } from "./api.js";
 import { ClassActionModals } from "./classModals.jsx";
 import { AttendancePage } from "./pages/AttendancePage.jsx";
 import { Onboarding } from "./pages/Onboarding.jsx";
@@ -8,8 +9,13 @@ import { GradebookPage } from "./pages/GradebookPage.jsx";
 import { AnalyticsPage } from "./pages/AnalyticsPage.jsx";
 import { AIPage } from "./pages/AIPage.jsx";
 import { DiscussionsPage } from "./pages/DiscussionsPage.jsx";
+import { ParentPortalPage } from "./pages/ParentPortalPage.jsx";
+import { MessagesPage } from "./pages/MessagesPage.jsx";
+import { AcademicCalendarPage } from "./pages/CalendarPage.jsx";
+import { RubricGrader } from "./components/RubricGrader.jsx";
 import { useToast } from "./components/Toast.jsx";
-import { useTheme } from "./hooks/useTheme.js";
+import { useTheme, resolveDarkMode } from "./hooks/useTheme.js";
+import { useNotificationStream } from "./hooks/useNotificationStream.js";
 
 // ─── Colors & Theme ───────────────────────────────────────────────────────────
 const COLORS = {
@@ -151,7 +157,7 @@ function AuthPage({ onAuth }) {
   const { login, register } = useApp();
   const toast = useToast();
   const [isLogin, setIsLogin] = useState(true);
-  const [form, setForm] = useState({ email: "", password: "", name: "", role: "student" });
+  const [form, setForm] = useState({ email: "", password: "", name: "", role: "student", studentEmail: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -159,6 +165,7 @@ function AuthPage({ onAuth }) {
     { label: "👨‍🏫 Teacher Demo", email: "sarah@university.edu", password: "teacher123" },
     { label: "👨‍🎓 Student Demo", email: "alex@student.edu", password: "student123" },
     { label: "🔧 Admin Demo", email: "admin@system.edu", password: "admin123" },
+    { label: "👨‍👩‍👧 Parent Demo", email: "parent@family.edu", password: "parent123" },
   ];
 
   const handleSubmit = async () => {
@@ -167,7 +174,9 @@ function AuthPage({ onAuth }) {
     try {
       const user = isLogin
         ? await login(form.email, form.password)
-        : await register({ name: form.name, email: form.email, password: form.password, role: form.role });
+        : form.role === "parent"
+          ? (await api.registerParent({ name: form.name, email: form.email, password: form.password, studentEmail: form.studentEmail }), await login(form.email, form.password))
+          : await register({ name: form.name, email: form.email, password: form.password, role: form.role });
       onAuth(user);
     } catch (e) {
       const message = e.message || "Something went wrong.";
@@ -226,7 +235,14 @@ function AuthPage({ onAuth }) {
                 <select className="sca-input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
                   <option value="student">Student</option>
                   <option value="teacher">Teacher / Instructor</option>
+                  <option value="parent">Parent / Guardian</option>
                 </select>
+              </div>
+            )}
+            {!isLogin && form.role === "parent" && (
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: "block" }}>Student&apos;s school email</label>
+                <input className="sca-input" type="email" placeholder="student@school.edu" value={form.studentEmail} onChange={e => setForm(f => ({ ...f, studentEmail: e.target.value }))} />
               </div>
             )}
             {error && <p style={{ color: "#dc2626", fontSize: 13, background: "#fee2e2", padding: "10px 14px", borderRadius: 8 }}>{error}</p>}
@@ -248,6 +264,14 @@ function AuthPage({ onAuth }) {
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ user, page, setPage, onLogout, mobileOpen, onCloseMobile }) {
+  const parentNav = [
+    { id: "dashboard", icon: "🏠", label: "Dashboard" },
+    { id: "parent", icon: "👨‍👩‍👧", label: "My Children" },
+    { id: "messages", icon: "✉️", label: "Messages" },
+    { id: "calendar", icon: "📅", label: "Calendar" },
+    { id: "announcements", icon: "📢", label: "Announcements" },
+    { id: "profile", icon: "👤", label: "Profile" },
+  ];
   const studentNav = [
     { id: "dashboard", icon: "🏠", label: "Dashboard" },
     { id: "classes", icon: "📚", label: "My Classes" },
@@ -255,6 +279,7 @@ function Sidebar({ user, page, setPage, onLogout, mobileOpen, onCloseMobile }) {
     { id: "submissions", icon: "📬", label: "My Submissions" },
     { id: "attendance", icon: "📋", label: "Attendance" },
     { id: "discussions", icon: "💬", label: "Discussions" },
+    { id: "messages", icon: "✉️", label: "Messages" },
     { id: "ai", icon: "✨", label: "AI Coach" },
     { id: "calendar", icon: "📅", label: "Calendar" },
     { id: "announcements", icon: "📢", label: "Announcements" },
@@ -269,6 +294,7 @@ function Sidebar({ user, page, setPage, onLogout, mobileOpen, onCloseMobile }) {
     { id: "attendance", icon: "📋", label: "Attendance" },
     { id: "analytics", icon: "📈", label: "Analytics" },
     { id: "discussions", icon: "💬", label: "Discussions" },
+    { id: "messages", icon: "✉️", label: "Messages" },
     { id: "ai", icon: "✨", label: "AI Studio" },
     { id: "calendar", icon: "📅", label: "Calendar" },
     { id: "announcements", icon: "📢", label: "Announcements" },
@@ -285,8 +311,8 @@ function Sidebar({ user, page, setPage, onLogout, mobileOpen, onCloseMobile }) {
     { id: "profile", icon: "👤", label: "Profile" },
   ];
 
-  const navItems = user.role === "admin" ? adminNav : user.role === "teacher" ? teacherNav : studentNav;
-  const roleColors = { student: COLORS.emerald, teacher: COLORS.indigo, admin: COLORS.amber };
+  const navItems = user.role === "admin" ? adminNav : user.role === "teacher" ? teacherNav : user.role === "parent" ? parentNav : studentNav;
+  const roleColors = { student: COLORS.emerald, teacher: COLORS.indigo, admin: COLORS.amber, parent: COLORS.pink };
 
   return (
     <aside className={`sca-sidebar ${mobileOpen ? 'open' : ''}`} aria-label="Primary navigation">
@@ -338,7 +364,7 @@ function Topbar({ title, user, notifCount, onToggleTheme, onMenuClick }) {
         <div style={{ position: "relative" }}>
           <button className="sca-btn sca-btn-ghost" style={{ padding: "8px 12px", position: "relative" }} onClick={() => setShowNotif(!showNotif)}>
             🔔
-            {notifCount > 0 && <span style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, background: "#ef4444", borderRadius: "50%" }} />}
+            {notifCount > 0 && <span className="sca-notif-badge" aria-label={`${notifCount} unread`}>{notifCount > 9 ? '9+' : notifCount}</span>}
           </button>
           {showNotif && (
             <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 320, background: "var(--sca-surface)", border: "1px solid var(--sca-border)", borderRadius: 14, boxShadow: "0 8px 30px rgba(0,0,0,.12)", zIndex: 200 }}>
@@ -1225,6 +1251,7 @@ function SubmissionsPage({ user }) {
   const [gradeModal, setGradeModal] = useState(null);
   const [gradeScore, setGradeScore] = useState("");
   const [gradeFeedback, setGradeFeedback] = useState("");
+  const [rubricScores, setRubricScores] = useState(null);
 
   const openGrade = (sub) => {
     setGradeModal(sub);
@@ -1327,10 +1354,11 @@ function SubmissionsPage({ user }) {
               <p style={{ fontSize: 14, fontWeight: 500, color: COLORS.indigo }}>📎 {gradeModal.file}</p>
             </div>
             <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, display: "block" }}>Score (out of {assignments.find(a => a.id === gradeModal.assignmentId)?.points})</label><input className="sca-input" type="number" placeholder="0" value={gradeScore} onChange={e => setGradeScore(e.target.value)} /></div>
+            <RubricGrader assignmentId={gradeModal.assignmentId} onScoreChange={(total, scores) => { setGradeScore(String(total)); setRubricScores(scores); }} />
             <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, display: "block" }}>Feedback</label><textarea className="sca-input" rows={4} placeholder="Write feedback for the student…" style={{ resize: "none" }} value={gradeFeedback} onChange={e => setGradeFeedback(e.target.value)} /></div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="sca-btn sca-btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setGradeModal(null)}>Cancel</button>
-              <button className="sca-btn sca-btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => { await gradeSubmission(gradeModal.id, Number(gradeScore), gradeFeedback); setGradeModal(null); setGradeScore(""); setGradeFeedback(""); }}>Save Grade</button>
+              <button className="sca-btn sca-btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => { await gradeSubmission(gradeModal.id, Number(gradeScore), gradeFeedback, rubricScores); setGradeModal(null); setGradeScore(""); setGradeFeedback(""); setRubricScores(null); }}>Save Grade</button>
             </div>
           </div>
         </Modal>
@@ -1582,7 +1610,7 @@ function SettingsPage() {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [view, setView] = useState("landing");
-  const { user, logout, notifications, loading, error, updateProfile, setUser } = useApp();
+  const { user, logout, notifications, loading, error, updateProfile, setUser, mergeNotifications, refresh } = useApp();
   const [page, setPage] = useState("dashboard");
   const [mobileNav, setMobileNav] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -1595,9 +1623,20 @@ export default function App() {
   const handleAuth = () => { setView("app"); setPage("dashboard"); };
   const handleLogout = () => { logout(); setView("landing"); setPage("dashboard"); };
 
+  useNotificationStream((data) => {
+    if (data?.notifications?.length) mergeNotifications(data.notifications);
+    if (data?.unread != null) refresh();
+  });
+
   const toggleTheme = async () => {
     if (!user) return;
-    const r = await updateProfile({ darkMode: !user.darkMode });
+    const order = ['system', 'light', 'dark'];
+    const current = user.themePreference || (user.darkMode ? 'dark' : 'light');
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    const r = await updateProfile({
+      themePreference: next,
+      darkMode: next === 'dark' ? true : next === 'light' ? false : resolveDarkMode({ ...user, themePreference: next }),
+    });
     setUser(r.user);
   };
 
@@ -1605,6 +1644,7 @@ export default function App() {
     dashboard: "Dashboard", classes: "Classes", assignments: "Assignments", attendance: "Attendance",
     submissions: "Submissions", gradebook: "Gradebook", analytics: "Analytics", discussions: "Discussions",
     ai: user?.role === "student" ? "AI Coach" : "AI Studio", calendar: "Calendar", announcements: "Announcements",
+    messages: "Messages", parent: "Parent Portal",
     profile: "Profile", users: "Users", reports: "Reports", settings: "Settings",
   };
   const unreadNotifs = notifications.filter(n => !n.read).length;
@@ -1623,6 +1663,7 @@ export default function App() {
 
   const renderPage = () => {
     if (page === "dashboard") {
+      if (user.role === "parent") return <ParentPortalPage user={user} />;
       if (user.role === "student") return <StudentDashboard user={user} setPage={setPage} />;
       if (user.role === "teacher") return <TeacherDashboard user={user} setPage={setPage} />;
       return <AdminDashboard />;
@@ -1635,7 +1676,9 @@ export default function App() {
     if (page === "discussions") return <DiscussionsPage user={user} />;
     if (page === "ai") return <AIPage user={user} />;
     if (page === "submissions") return <SubmissionsPage user={user} />;
-    if (page === "calendar") return <CalendarPage user={user} />;
+    if (page === "calendar") return <AcademicCalendarPage user={user} />;
+    if (page === "messages") return <MessagesPage user={user} />;
+    if (page === "parent") return <ParentPortalPage user={user} />;
     if (page === "announcements") return <AnnouncementsPage user={user} />;
     if (page === "profile") return <ProfilePage user={user} />;
     if (page === "users") return <UsersPage />;

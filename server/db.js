@@ -42,7 +42,7 @@ export function initSchema() {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('student','teacher','admin')),
+      role TEXT NOT NULL CHECK(role IN ('student','teacher','admin','parent')),
       avatar TEXT,
       department TEXT,
       major TEXT,
@@ -148,6 +148,69 @@ export function initSchema() {
     );
   `);
   applyMigrations();
+  migrateUsersForParentRole();
+}
+
+function migrateUsersForParentRole() {
+  if (db.prepare("SELECT name FROM schema_migrations WHERE name = '004_parent_role_js'").get()) return;
+  let parentOk = false;
+  db.exec('BEGIN');
+  try {
+    db.prepare("INSERT INTO users (name, email, password_hash, role) VALUES ('_probe', '_probe@test.local', 'x', 'parent')").run();
+    parentOk = true;
+  } catch { /* CHECK blocks parent */ }
+  db.exec('ROLLBACK');
+  if (parentOk) {
+    db.prepare("INSERT INTO schema_migrations (name) VALUES ('004_parent_role_js')").run();
+    return;
+  }
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE users_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('student','teacher','admin','parent')),
+        avatar TEXT,
+        department TEXT,
+        major TEXT,
+        year TEXT,
+        phone TEXT,
+        bio TEXT,
+        dark_mode INTEGER DEFAULT 0,
+        email_notifications INTEGER DEFAULT 1,
+        onboarding_complete INTEGER DEFAULT 0,
+        push_notifications INTEGER DEFAULT 1,
+        notification_prefs_json TEXT DEFAULT '{}',
+        theme_preference TEXT DEFAULT 'system',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+    const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+    const hasOnboarding = cols.includes('onboarding_complete');
+    db.exec(`
+      INSERT INTO users_new (
+        id, name, email, password_hash, role, avatar, department, major, year, phone, bio,
+        dark_mode, email_notifications, onboarding_complete, created_at
+      )
+      SELECT
+        id, name, email, password_hash, role, avatar, department, major, year, phone, bio,
+        dark_mode, email_notifications, ${hasOnboarding ? 'onboarding_complete' : '0'}, created_at
+      FROM users;
+    `);
+    db.exec('DROP TABLE users');
+    db.exec('ALTER TABLE users_new RENAME TO users');
+    db.prepare("INSERT INTO schema_migrations (name) VALUES ('004_parent_role_js')").run();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
 }
 
 export function userPublic(row) {
@@ -167,6 +230,8 @@ export function userPublic(row) {
     bio: rest.bio,
     darkMode: !!rest.dark_mode,
     emailNotifications: rest.email_notifications !== 0,
+    pushNotifications: rest.push_notifications !== 0,
+    themePreference: rest.theme_preference || 'system',
     onboardingComplete: !!rest.onboarding_complete,
     createdAt: rest.created_at,
   };
