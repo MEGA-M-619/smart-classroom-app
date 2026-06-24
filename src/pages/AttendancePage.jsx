@@ -40,6 +40,7 @@ export function AttendancePage({ user }) {
   useEffect(() => {
     if (user.role !== 'teacher' && user.role !== 'admin') return undefined;
     if (!selectedClassId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     getClassAttendance(selectedClassId, sessionDate)
       .then((data) => {
@@ -48,6 +49,7 @@ export function AttendancePage({ user }) {
       })
       .catch((e) => toast.error(e.message || 'Could not load attendance.'))
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClassId, sessionDate, user.role]);
 
   const updateStatus = (studentId, status) => {
@@ -121,7 +123,22 @@ export function AttendancePage({ user }) {
           </div>
           <div className="sca-card">
             <h3 style={{ fontWeight: 600, marginBottom: 16 }}>Analytics</h3>
-            <div className="sca-chart-placeholder">Attendance trend chart (coming soon)</div>
+            {!attendanceRecent?.length ? (
+              <p style={{ color: 'var(--sca-text-muted)', fontSize: 14 }}>Attendance analytics will appear after sessions are recorded.</p>
+            ) : (
+              (attendanceRecent || []).slice(0, 8).map((row) => {
+                const isPresent = row.status === 'present' || row.status === 'late';
+                return (
+                  <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <div style={{ width: 84, fontSize: 12, color: 'var(--sca-text-muted)' }}>{formatDate(row.date)}</div>
+                    <div style={{ flex: 1, height: 8, background: 'var(--sca-surface-muted)', borderRadius: 8 }}>
+                      <div style={{ width: isPresent ? '100%' : '18%', height: '100%', background: isPresent ? COLORS.emerald : COLORS.amber, borderRadius: 8 }} />
+                    </div>
+                    <Badge type={row.status} label={row.status} />
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -161,7 +178,7 @@ export function AttendancePage({ user }) {
         <div className="sca-grid-3">
           <div>
             <label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Class</label>
-            <select className="sca-input" value={selectedClassId} onChange={(e) => setSelectedClassId(Number(e.target.value))}>
+            <select className="sca-input" value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)}>
               {teacherClasses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
@@ -225,7 +242,11 @@ export function AttendancePage({ user }) {
               </div>
             ))
           )}
-          <div className="sca-chart-placeholder" style={{ marginTop: 20 }}>Class attendance analytics</div>
+          {history.length > 0 && (
+            <p style={{ marginTop: 18, color: 'var(--sca-text-muted)', fontSize: 13 }}>
+              Average attendance: {Math.round(history.reduce((sum, row) => sum + row.percentage, 0) / history.length)}%
+            </p>
+          )}
         </div>
       </div>
     </div>

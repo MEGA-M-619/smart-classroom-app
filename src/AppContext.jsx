@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, getToken, setToken } from './api.js';
+import { ApiError, api, setToken } from './api.js';
 
 import { AppContext } from './app-context.js';
 
-export function AppProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [data, setData] = useState({
+function emptyData() {
+  return {
     classes: [],
     assignments: [],
     announcements: [],
@@ -14,17 +13,21 @@ export function AppProvider({ children }) {
     notifications: [],
     submissions: [],
     users: [],
+    classStudents: {},
     settings: {},
     stats: {},
     attendanceSummary: [],
     attendanceRecent: [],
-  });
-  const [loading, setLoading] = useState(() => Boolean(getToken()));
+  };
+}
+
+export function AppProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [data, setData] = useState(emptyData);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const refresh = useCallback(async () => {
-    if (!getToken()) return;
-    const boot = await api.bootstrap();
+  const applyBootstrap = useCallback((boot = {}) => {
     setData({
       classes: boot.classes || [],
       assignments: boot.assignments || [],
@@ -34,6 +37,7 @@ export function AppProvider({ children }) {
       notifications: boot.notifications || [],
       submissions: boot.submissions || [],
       users: boot.users || [],
+      classStudents: boot.classStudents || {},
       settings: boot.settings || {},
       stats: boot.stats || {},
       attendanceSummary: boot.attendanceSummary || [],
@@ -42,44 +46,60 @@ export function AppProvider({ children }) {
     return boot;
   }, []);
 
+  const refresh = useCallback(async () => applyBootstrap(await api.bootstrap()), [applyBootstrap]);
+
   useEffect(() => {
-    const token = getToken();
-    if (!token) return;
-    api.me()
-      .then(({ user: u }) => {
-        setUser(u);
-        return refresh();
-      })
-      .catch((e) => { setError(e.message || 'Your session expired. Please sign in again.'); setToken(null); })
-      .finally(() => setLoading(false));
+    let mounted = true;
+
+    async function loadSession() {
+      setLoading(true);
+      try {
+        const { user: profile } = await api.me();
+        if (!mounted) return;
+        setUser(profile);
+        await refresh();
+      } catch (e) {
+        if (!mounted) return;
+        if (!(e instanceof ApiError) || e.status !== 401) {
+          setError(e.message || 'Your session expired. Please sign in again.');
+        }
+        setToken(null);
+        setUser(null);
+        setData(emptyData());
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    loadSession();
+    return () => {
+      mounted = false;
+    };
   }, [refresh]);
 
   const login = async (email, password) => {
     setError(null);
-    const { token, user: u } = await api.login(email, password);
+    const { token, user: profile } = await api.login(email, password);
     setToken(token);
-    setUser(u);
+    setUser(profile);
     await refresh();
-    return u;
+    return profile;
   };
 
   const register = async (body) => {
     setError(null);
-    const { token, user: u } = await api.register(body);
+    const { token, user: profile } = await api.register(body);
     setToken(token);
-    setUser(u);
+    setUser(profile);
     await refresh();
-    return u;
+    return profile;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await api.logout?.();
     setToken(null);
     setUser(null);
-    setData({
-      classes: [], assignments: [], announcements: [], materials: [], events: [],
-      notifications: [], submissions: [], users: [], settings: {}, stats: {},
-      attendanceSummary: [], attendanceRecent: [],
-    });
+    setData(emptyData());
   };
 
   const run = async (fn) => {
@@ -109,8 +129,8 @@ export function AppProvider({ children }) {
     createClass: (body) => run(() => api.createClass(body)),
     joinClass: (code) => run(() => api.joinClass(code)),
     createAssignment: (body) => run(() => api.createAssignment(body)),
-    submitAssignment: (assignmentId, file, fileName) =>
-      run(() => api.submitAssignment(assignmentId, file, fileName)),
+    submitAssignment: (assignmentId, file, fileName, textAnswer) =>
+      run(() => api.submitAssignment(assignmentId, file, fileName, textAnswer)),
     gradeSubmission: (id, grade, feedback) => run(() => api.gradeSubmission(id, grade, feedback)),
     downloadSubmission: (id, fileName) => api.downloadSubmission(id, fileName),
     createAnnouncement: (body) => run(() => api.createAnnouncement(body)),
@@ -134,4 +154,3 @@ export function AppProvider({ children }) {
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
-

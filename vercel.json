@@ -11,9 +11,7 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api?path=$1" },
-    { "source": "/uploads/(.*)", "destination": "/api?path=uploads/$1" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
     {
