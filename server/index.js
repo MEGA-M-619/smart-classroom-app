@@ -844,19 +844,21 @@ if (fs.existsSync(path.join(clientDist, 'index.html'))) {
 app.use('/api', notFound);
 app.use(errorHandler);
 
-app.listen(PORT, HOST, () => {
-  logger.info(`SmartClass API listening on ${HOST}:${PORT}`);
-  logger.info(`Local API: http://localhost:${PORT}`);
-  const ips = getNetworkAddresses();
-  if (ips.length) {
-    console.log('  Network (share these URLs on your Wi‑Fi/LAN):');
-    for (const ip of ips) logger.info(`http://${ip}:${PORT}`);
-  }
-  if (fs.existsSync(path.join(clientDist, 'index.html'))) {
-    logger.info('Web app + API are on the same port (production build).');
-  } else {
-    logger.info('Dev UI: run npm run dev and open the Network URL Vite prints (port 5173).');
-  }
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, HOST, () => {
+    logger.info(`SmartClass API listening on ${HOST}:${PORT}`);
+    logger.info(`Local API: http://localhost:${PORT}`);
+    const ips = getNetworkAddresses();
+    if (ips.length) {
+      console.log('  Network (share these URLs on your Wi‑Fi/LAN):');
+      for (const ip of ips) logger.info(`http://${ip}:${PORT}`);
+    }
+    if (fs.existsSync(path.join(clientDist, 'index.html'))) {
+      logger.info('Web app + API are on the same port (production build).');
+    } else {
+      logger.info('Dev UI: run npm run dev and open the Network URL Vite prints (port 5173).');
+    }
+  });
+}
 
 export default app;

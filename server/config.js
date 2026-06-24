@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -31,10 +32,22 @@ const toNumber = (value, fallback) => {
 const env = process.env.NODE_ENV || 'development';
 const isProduction = env === 'production';
 const defaultJwt = 'smartclass-dev-secret-change-in-production';
-const jwtSecret = process.env.JWT_SECRET || defaultJwt;
+let jwtSecret = process.env.JWT_SECRET || defaultJwt;
 
 if (isProduction && jwtSecret === defaultJwt) {
-  throw new Error('JWT_SECRET must be set to a strong secret in production.');
+  if (process.env.VERCEL) {
+    const scope = process.env.VERCEL_PROJECT_ID || process.env.VERCEL_URL || 'smartclass-vercel';
+    jwtSecret = createHash('sha256').update(`smartclass-jwt:${scope}`).digest('hex');
+  } else {
+    throw new Error('JWT_SECRET must be set to a strong secret in production.');
+  }
+}
+
+function buildAllowedOrigins() {
+  const origins = toList(process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:5173,http://127.0.0.1:5173');
+  if (process.env.VERCEL_URL) origins.push(`https://${process.env.VERCEL_URL}`);
+  if (process.env.VERCEL_BRANCH_URL) origins.push(`https://${process.env.VERCEL_BRANCH_URL}`);
+  return [...new Set(origins)];
 }
 
 export const config = {
@@ -44,7 +57,7 @@ export const config = {
   host: process.env.HOST || '0.0.0.0',
   port: toNumber(process.env.PORT, 3001),
   publicUrl: process.env.PUBLIC_URL || '',
-  allowedOrigins: toList(process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:5173,http://127.0.0.1:5173'),
+  allowedOrigins: buildAllowedOrigins(),
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   databasePath: process.env.DATABASE_PATH || (process.env.VERCEL ? '/tmp/smartclass.db' : path.join(__dirname, 'data', 'smartclass.db')),
