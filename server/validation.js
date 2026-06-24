@@ -5,6 +5,11 @@ export function cleanString(value, max = 255) {
 }
 
 export function requireFields(body, fields) {
+  if (!body || typeof body !== 'object') {
+    const error = new Error('Request body is required.');
+    error.status = 400;
+    throw error;
+  }
   const missing = fields.filter((field) => !cleanString(body[field]));
   if (missing.length) {
     const error = new Error(`Missing required field${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`);
