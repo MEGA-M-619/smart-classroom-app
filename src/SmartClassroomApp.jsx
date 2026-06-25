@@ -92,19 +92,19 @@ function LandingPage({ onLogin }) {
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%)", display: "flex", flexDirection: "column" }}>
       {/* Nav */}
-      <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 60px", background: "#fff", borderBottom: "1px solid #e2e8f0" }}>
+      <nav className="sca-landing-nav" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 60px", background: "#fff", borderBottom: "1px solid #e2e8f0" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, background: COLORS.indigo, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🎓</div>
           <span style={{ fontSize: 20, fontWeight: 700, color: COLORS.text }}>SmartClass</span>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
+        <div className="sca-landing-actions" style={{ display: "flex", gap: 12 }}>
           <button className="sca-btn sca-btn-ghost" onClick={onLogin}>Sign In</button>
           <button className="sca-btn sca-btn-primary" onClick={onLogin}>Get Started</button>
         </div>
       </nav>
 
       {/* Hero */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "60px 40px" }}>
+      <div className="sca-landing-hero" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "60px 40px" }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#e0e7ff", color: COLORS.indigo, padding: "6px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600, marginBottom: 24 }}>
           ✨ New for Spring 2025
         </div>
@@ -114,13 +114,13 @@ function LandingPage({ onLogin }) {
         <p style={{ fontSize: 18, color: COLORS.textMuted, maxWidth: 540, lineHeight: 1.7, marginBottom: 36 }}>
           Manage classes, assignments, and announcements in one beautifully simple platform. For teachers and students who deserve better tools.
         </p>
-        <div style={{ display: "flex", gap: 12 }}>
+        <div className="sca-landing-actions" style={{ display: "flex", gap: 12 }}>
           <button className="sca-btn sca-btn-primary" style={{ padding: "14px 28px", fontSize: 16 }} onClick={onLogin}>Start for Free</button>
           <button className="sca-btn sca-btn-ghost" style={{ padding: "14px 28px", fontSize: 16 }} onClick={onLogin}>See Demo →</button>
         </div>
 
         {/* Features */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 24, marginTop: 72, maxWidth: 860, width: "100%" }}>
+        <div className="sca-landing-features" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 24, marginTop: 72, maxWidth: 860, width: "100%" }}>
           {[
             { icon: "📚", title: "Smart Course Management", desc: "Create, organize, and share course materials with a few clicks." },
             { icon: "📝", title: "Assignment Tracking", desc: "Post assignments, collect submissions, and grade — all in one place." },
@@ -135,7 +135,7 @@ function LandingPage({ onLogin }) {
         </div>
 
         {/* Social proof */}
-        <div style={{ marginTop: 56, display: "flex", gap: 40, flexWrap: "wrap", justifyContent: "center" }}>
+        <div className="sca-landing-proof" style={{ marginTop: 56, display: "flex", gap: 40, flexWrap: "wrap", justifyContent: "center" }}>
           {[{ v: "2,400+", l: "Students" }, { v: "180+", l: "Instructors" }, { v: "95%", l: "Satisfaction" }, { v: "40+", l: "Universities" }].map(s => (
             <div key={s.l} style={{ textAlign: "center" }}>
               <p style={{ fontSize: 28, fontWeight: 800, color: COLORS.indigo }}>{s.v}</p>
@@ -145,7 +145,7 @@ function LandingPage({ onLogin }) {
         </div>
       </div>
 
-      <footer style={{ padding: "20px 60px", textAlign: "center", color: COLORS.textMuted, fontSize: 13, borderTop: "1px solid #e2e8f0" }}>
+      <footer className="sca-landing-footer" style={{ padding: "20px 60px", textAlign: "center", color: COLORS.textMuted, fontSize: 13, borderTop: "1px solid #e2e8f0" }}>
         © 2025 SmartClass — University Software Engineering Project
       </footer>
     </div>
@@ -188,9 +188,9 @@ function AuthPage({ onAuth }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", background: "#f8fafc" }}>
+    <div className="sca-auth-layout" style={{ minHeight: "100vh", display: "flex", background: "#f8fafc" }}>
       {/* Left panel */}
-      <div style={{ flex: 1, background: `linear-gradient(145deg, ${COLORS.indigo}, #818cf8)`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, color: "#fff" }}>
+      <div className="sca-auth-panel sca-auth-panel--brand" style={{ flex: 1, background: `linear-gradient(145deg, ${COLORS.indigo}, #818cf8)`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, color: "#fff" }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>🎓</div>
         <h1 style={{ fontSize: 36, fontWeight: 800, marginBottom: 12 }}>SmartClass</h1>
         <p style={{ fontSize: 16, opacity: .85, textAlign: "center", lineHeight: 1.7, maxWidth: 320 }}>
@@ -207,7 +207,7 @@ function AuthPage({ onAuth }) {
       </div>
 
       {/* Right panel */}
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
+      <div className="sca-auth-panel" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
         <div style={{ width: "100%", maxWidth: 400 }}>
           <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 6 }}>{isLogin ? "Welcome back" : "Create account"}</h2>
           <p style={{ color: COLORS.textMuted, marginBottom: 28, fontSize: 14 }}>
@@ -353,11 +353,11 @@ function Topbar({ title, user, notifCount, onToggleTheme, onMenuClick }) {
 
   return (
     <div className="sca-topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div className="sca-topbar__title" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <button type="button" className="sca-btn sca-btn-ghost sca-menu-btn" onClick={onMenuClick} aria-label="Open menu">☰</button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--sca-text)" }}>{title}</h1>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <div className="sca-topbar__actions" style={{ display: "flex", alignItems: "center", gap: 16 }}>
         <button type="button" className="sca-btn sca-btn-ghost" style={{ padding: "8px 12px" }} onClick={onToggleTheme} aria-label="Toggle dark mode">
           {user.darkMode ? "☀️" : "🌙"}
         </button>
@@ -367,7 +367,7 @@ function Topbar({ title, user, notifCount, onToggleTheme, onMenuClick }) {
             {notifCount > 0 && <span className="sca-notif-badge" aria-label={`${notifCount} unread`}>{notifCount > 9 ? '9+' : notifCount}</span>}
           </button>
           {showNotif && (
-            <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 320, background: "var(--sca-surface)", border: "1px solid var(--sca-border)", borderRadius: 14, boxShadow: "0 8px 30px rgba(0,0,0,.12)", zIndex: 200 }}>
+            <div className="sca-notif-popover">
               <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--sca-border)", fontWeight: 600, fontSize: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>Notifications</span>
                 {notifCount > 0 && <button type="button" className="sca-btn sca-btn-ghost" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => markAllNotificationsRead()}>Mark all read</button>}
@@ -404,7 +404,7 @@ function StudentDashboard({ user, setPage }) {
   return (
     <div className="fade-in" style={{ padding: 28 }}>
       {/* Welcome */}
-      <div style={{ background: `linear-gradient(135deg, ${COLORS.indigo}, #818cf8)`, borderRadius: 20, padding: "28px 32px", color: "#fff", marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div className="sca-mobile-stack" style={{ background: `linear-gradient(135deg, ${COLORS.indigo}, #818cf8)`, borderRadius: 20, padding: "28px 32px", color: "#fff", marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <p style={{ fontSize: 14, opacity: .8, marginBottom: 4 }}>Welcome back,</p>
           <h2 style={{ fontSize: 26, fontWeight: 700 }}>{user.name.split(" ")[0]} 👋</h2>
@@ -947,7 +947,7 @@ function AssignmentsPage({ user, setPage }) {
           const cls = classes.find(c => c.id === a.classId);
           const d = daysUntil(a.dueDate);
           return (
-            <div key={a.id} className="sca-card" style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+            <div key={a.id} className="sca-card sca-mobile-stack" style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
               <div style={{ width: 48, height: 48, borderRadius: 12, background: cls?.color + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>{cls?.icon}</div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 4 }}>
@@ -1395,7 +1395,7 @@ function ProfilePage({ user }) {
       <h2 style={{ fontWeight: 700, fontSize: 22, marginBottom: 24 }}>Profile Settings</h2>
 
       {/* Profile Card */}
-      <div className="sca-card" style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 20 }}>
+      <div className="sca-card sca-profile-card" style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 20 }}>
         <div style={{ width: 80, height: 80, borderRadius: "50%", background: roleColors[user.role], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "#fff", fontWeight: 700 }}>
           {getInitials(user.name)}
         </div>
@@ -1421,7 +1421,7 @@ function ProfilePage({ user }) {
           </div>
           <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, display: "block" }}>Phone</label><input className="sca-input" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
           <div><label style={{ fontSize: 13, fontWeight: 500, marginBottom: 5, display: "block" }}>Bio</label><textarea className="sca-input" rows={3} value={form.bio} onChange={e => setForm(f => ({ ...f, bio: e.target.value }))} style={{ resize: "none" }} /></div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div className="sca-mobile-stack-actions" style={{ display: "flex", gap: 10 }}>
             <button className="sca-btn sca-btn-primary" onClick={save}>{saved ? "✅ Saved!" : "Save Changes"}</button>
             <button className="sca-btn sca-btn-ghost">Discard</button>
           </div>

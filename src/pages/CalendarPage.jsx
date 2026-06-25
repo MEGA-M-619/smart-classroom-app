@@ -97,7 +97,7 @@ export function AcademicCalendarPage({ user }) {
 
       {view === 'month' ? (
         <div className="sca-grid-2 sca-calendar-layout">
-          <div className="sca-card">
+          <div className="sca-card sca-calendar-grid-wrap">
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ fontWeight: 700 }}>{MONTHS[month]} {year}</h3>
               <div style={{ display: 'flex', gap: 8 }}>
